@@ -640,6 +640,20 @@ def compare_colours(frame, column, reference_column, decimals=1):
             .format({c: ("{:+.%df}" if c.startswith("Difference") else "{:.%df}") % decimals for c in numbers}))
 
 
+def signed_colours(frame, column):
+    """The frame as a Styler, `column` shaded by its sign: positive red, negative green, zero no colour; the
+    larger the value against the column's largest one, the stronger (square root, so small values still show)."""
+    largest = frame[column].abs().max()
+
+    def colour(value):
+        if pd.isna(value) or value == 0 or not largest:
+            return ""
+        rgb = "224, 68, 58" if value > 0 else "47, 168, 79"
+        return f"background-color: rgba({rgb}, {0.12 + 0.43 * (abs(value) / largest) ** 0.5:.2f})"
+
+    return frame.style.map(colour, subset=[column])
+
+
 def status_definitions():
     with st.expander("Material Status Definitions"):
         for status in STATUS_ORDER:

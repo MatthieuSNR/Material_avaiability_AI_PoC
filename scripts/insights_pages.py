@@ -332,10 +332,12 @@ def _status_change(tracking):
     summary, entered, n_a, n_b = ins.status_change(tracking, ends[week_a], ends[week_b], tuple(statuses))
     st.metric(f"Items in {' / '.join(statuses)}", f"{n_a} → {n_b}", delta=f"{n_b - n_a:+d}", delta_color="inverse",
               help="Number of items in the status on the last snapshot of each week, and the difference.")
-    st.dataframe(summary, use_container_width=True, hide_index=True, column_config={
+    st.dataframe(ui.signed_colours(summary, "Net change"), use_container_width=True, hide_index=True, column_config={
         "Entered": st.column_config.NumberColumn(help="Items in the status in the second week but not in the first."),
         "Left": st.column_config.NumberColumn(help="Items in the status in the first week but no longer in the second."),
-        "Net change": st.column_config.NumberColumn(help="Entered minus left: the contribution of this root cause.")})
+        "Net change": st.column_config.NumberColumn(
+            help="Entered minus left: the contribution of this root cause. Red = more items in the status, "
+                 "green = fewer; the stronger the colour, the larger the change.")})
     if len(entered):
         st.markdown("**Items that entered the status, with their root cause and comment**")
         comments_en = st.session_state.get("_comments_en", {})
