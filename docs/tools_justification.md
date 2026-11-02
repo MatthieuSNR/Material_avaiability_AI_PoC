@@ -15,7 +15,7 @@ This document justifies the **selection of tools, libraries, and frameworks** us
 | 9 | `venv` | environment |
 | 10 | `.env` + python-dotenv 1.2.4 | keys and password |
 | 11 | project structure | — |
-| 12 | ngrok 3.20.0 | remote usability tests |
+| 12 | Streamlit Community Cloud + `cryptography` 50.0.2 | online access for the usability tests |
 | 13 | pytest 9.1.1 | tests |
 | 14 | openpyxl 3.1.5 | Excel sheet for the planners |
 | 15 | scikit-learn 1.4.2, SciPy 1.17.1, sentence-transformers 3.4.1 (+ PyTorch 2.14.1, transformers 4.57.6) | Insights Lab analyses |
@@ -37,13 +37,6 @@ Each choice is grounded in **technical requirements, academic standards, and ind
  | **Readability**       | Clean and **intuitive syntax**, making it easier to document and share code (critical for thesis reproducibility).                                                                                           |
  | **Compatibility**     | Version **3.12.4** ensures compatibility with all required libraries (e.g., `spaCy 3.8.16`, `pandas 2.2.3`).                                                                                     |
  | **Academic Adoption** | Python is **the most cited language** in NLP/ML research papers (e.g., [arXiv](https://arxiv.org/), [ACL Anthology](https://aclanthology.org/)).                                                                   |
-
-### **Permanent access: Streamlit Community Cloud**
-- **Why**: the Roche network blocks both tunnels; a `….streamlit.app` link is ordinary web hosting, fixed, and works while this Mac is off. Marco agreed to host the (pseudonymised) data there.
-- **Data never in clear on GitHub** (the repository is public): `scripts/data_bundle.py` zips the files the dashboard reads (`cleaned_comments.csv`, `item_tracking.csv`, embedding cache, saved views) and encrypts them with **Fernet** (`cryptography`: AES-128 + HMAC) into `deploy/data.enc`, the only data file pushed. The key `DATA_KEY` is in `.env` and in the app's secrets; at its start the deployed app unpacks the files (`unpack_if_needed`).
-- **Secrets**: no `.env` on the Cloud; `config.py` copies the Streamlit secrets (`APP_PASSWORD`, `DATA_KEY`, `MISTRAL_API_KEY`) into the environment, so the modules are unchanged. Without `APP_PASSWORD` the deployed app does not open.
-- **Dependencies**: `scripts/requirements.txt` (next to the entry point, read by the Cloud): the dashboard only, PyTorch CPU build.
-- **Limits**: the data is on Streamlit's (Snowflake) servers in the US; an old `data.enc` stays in the Git history (readable only with the key: never change the key without rebuilding, never push it); the free app sleeps after a few days without visits (one click wakes it up).
 
 ### **Alternatives Considered**
  | **Alternative** | **Rejection Reason**                                                                                     |
@@ -371,7 +364,7 @@ Each folder and file has a **clear purpose**, making the project **easy to maint
 | `lexicon/`            | **Reference tables**: abbreviation library, DeepL glossary                                       | **Traceability**: versioned in Git, free of real comments; the planners validate them, the pipeline reads them. Files generated from the data stay in `data/interim/`. |
  | `tests/`              | **pytest tests** (comment cleaning, glossary, pseudonymisation, cloud summary, Insights Lab: 64 tests) | **Trust**: the privacy guarantee (no real name in the request) is checked automatically, with fake API clients and no Roche data. |
  | `assets/`, `.streamlit/` | **Roche logo, favicon, theme**                                                               | **Recognition**: a look close to the existing ION dashboard, kept out of the code. |
- | `share.sh`            | **Shares the dashboard through ngrok** (usability tests)                                         | **Control**: one command, refuses to start without a password (section 12). |
+ | `deploy/`             | **Encrypted data of the deployed app** (`data.enc`)                                              | **Confidentiality**: the only data file on the public GitHub, unreadable without `DATA_KEY` (section 12). |
  | `outputs/`            | **Local outputs** (e.g., demo teaser), not pushed                                               | **Separation**: material made for presentations stays apart from code and data.                                                                                                                                 |
  | `venv/`               | **Virtual environment** for Python dependencies                                                | **Isolation**: Ensures dependencies (e.g., `spaCy 3.8.16`) do not conflict with other projects or system-wide Python.                                                                                              |
  | `docs/`               | **Project documentation** (this file, `project_steps.md`, `project_structure.md`)                                | **Clarity**: Centralizes all documentation for easy reference by stakeholders (e.g., Roche team) and for your thesis.                                                                                              |
@@ -408,38 +401,40 @@ Each folder and file has a **clear purpose**, making the project **easy to maint
 
 ---
 
-## **📌 12. Remote Access for Usability Testing: ngrok (v3.20.0, free plan)**
+## **📌 12. Online Access for Usability Testing: Streamlit Community Cloud (free plan) + cryptography (v50.0.2)**
 
-### **Why ngrok?**
+### **Why Streamlit Community Cloud?**
  | **Criteria**          | **Justification** |
  |-----------------------|-------------------|
- | **Need**              | Usability tests with planners who are **not next to the laptop**: they open the dashboard in their own browser, with the real data. |
- | **Confidentiality**   | The app keeps running **on this Mac**: the data (`data/cleaned_comments.csv`) is never copied to a cloud server. ngrok only forwards the browser traffic (HTTPS) to `localhost`. |
- | **Effort**            | One command (`./share.sh`), no server, no deployment, no change to the code of the dashboard. Suited to a **prototype**: if Roche adopts the dashboard, it will be rebuilt on an internal platform (e.g., R Shiny, Posit Connect). |
- | **Cost**              | Free plan: one tunnel at a time, a new link at each start. |
+ | **Need**              | Usability tests with planners who are **not next to the laptop**, on the Roche network: they open the dashboard in their own browser, with the real data. |
+ | **Reachability**      | A `….streamlit.app` link is ordinary web hosting, fixed, and works while this Mac is off. Tunnels from this Mac (ngrok, Cloudflare quick tunnel) were tried first: the Roche network blocks them. |
+ | **Effort**            | Deployed from the GitHub repository (`main`, `scripts/app.py`); every push updates the app. No server to run. Suited to a **prototype**: if Roche adopts the dashboard, it will be rebuilt on an internal platform (e.g., R Shiny, Posit Connect). |
+ | **Cost**              | Free plan. |
+ | **Data agreement**    | Marco (data owner) agreed to host the pseudonymised data there. |
 
 ### **How It Works in the Project**
-- **`share.sh`** (project root): starts Streamlit on port 8505 and an ngrok tunnel to it, plus a **Cloudflare quick tunnel** (`cloudflared`, free, no account) to the same port when `cloudflared` is installed: a second link (`https://….trycloudflare.com`, new at each start, saved in `outputs/cloudflare_link.txt`) for networks that block ngrok, such as Roche's, with no warning page; `caffeinate` keeps the Mac awake while the app is shared. Ctrl+C stops both.
-- **Password page** (`check_password` in `scripts/app.py`): active when `APP_PASSWORD` is set in `.env`, since anyone with the link could otherwise see the data. `share.sh` refuses to start without a password. Empty password = local use, no page. The password is read again at every login: changing it needs no restart.
-- The visitor first sees an **ngrok warning page** (free plan) and clicks *Visit Site*, then enters the password. The page cannot be removed from this side: ngrok skips it only for a request carrying the `ngrok-skip-browser-warning` header, which a normal browser does not send, or on a paid plan. With `NGROK_DOMAIN` in `.env` (the account's free static domain) the link stays the same, so ngrok's 7-day cookie spares the page on later visits.
+- **Data never in clear on GitHub** (the repository is public): `scripts/data_bundle.py` zips the files the dashboard reads (`cleaned_comments.csv`, `item_tracking.csv`, embedding cache, saved views) and encrypts them with **Fernet** (`cryptography`: AES-128 + HMAC) into `deploy/data.enc`, the only data file pushed. The key `DATA_KEY` is in `.env` and in the app's secrets; at its start the deployed app unpacks the files (`unpack_if_needed`). After a new run of the pipeline: rebuild, commit and push `deploy/data.enc`.
+- **Secrets**: no `.env` on the Cloud; `config.py` copies the Streamlit secrets (`APP_PASSWORD`, `DATA_KEY`, `MISTRAL_API_KEY`) into the environment, so the modules are unchanged.
+- **Password page** (`check_password` in `scripts/app.py`): required on the Cloud (without `APP_PASSWORD` the deployed app does not open); locally active when `APP_PASSWORD` is set in `.env`, read again at every login (changing it needs no restart).
+- **Dependencies**: `scripts/requirements.txt` (next to the entry point, read by the Cloud instead of the root file): the dashboard only, PyTorch CPU build, minimum versions (the Cloud runs Python 3.14).
 
 ### **Limits**
-- The dashboard is reachable **only while the Mac is on, connected and `share.sh` runs**.
-- The traffic goes through **ngrok's or Cloudflare's servers** (encrypted HTTPS, but a third party in the path); acceptable for a short test with a password, not for production use.
-- A simple shared password, no individual accounts; the link changes at each start, which limits its reuse.
-- Corporate networks may block `*.ngrok-free.app` domains: test with one colleague before a session.
-- Each cloud AI summary generated by a visitor uses the Mistral API key of this Mac (free plan quotas are shared).
+- The data runs on **Streamlit's (Snowflake) servers in the US**, decrypted there to be shown; the protection for visitors is the password.
+- A simple shared password, no individual accounts.
+- An old `data.enc` stays in the Git history: readable only with the key, which must never be pushed or shared.
+- The free app sleeps after a few days without visits (one click wakes it up).
+- Each cloud AI summary generated by a visitor uses the same Mistral API key (free plan quotas are shared).
 
 ### **Alternatives Considered**
  | **Alternative** | **Rejection Reason** |
  |-----------------|----------------------|
- | Streamlit Community Cloud | **Added later** (Roche's network blocks ngrok and Cloudflare tunnels): see *Permanent access* below. |
+ | ngrok / Cloudflare quick tunnel from this Mac | Tried first (data stays on the Mac), but **blocked by the Roche network**; the Mac must also stay on during the tests. |
  | Internal Roche hosting (Posit Connect, Streamlit in Snowflake...) | The right option for an adopted tool, but requires IT approval: too heavy for a prototype test. |
- | Cloudflare Tunnel / Tailscale | Cloudflare quick tunnel **added** as a second link in `share.sh`; Tailscale would require every tester to install a client. |
+ | Upload of the data in the app at each start | No data on GitHub at all, but the files would have to be uploaded again after every restart of the app. |
 
 ### **References**
-- [ngrok Documentation](https://ngrok.com/docs)
-- [Streamlit: Remote access](https://docs.streamlit.io/develop/concepts/configuration)
+- [Streamlit Community Cloud](https://docs.streamlit.io/deploy/streamlit-community-cloud)
+- [cryptography: Fernet](https://cryptography.io/en/latest/fernet/)
 
 
 ---

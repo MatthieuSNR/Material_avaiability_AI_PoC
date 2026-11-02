@@ -97,10 +97,10 @@ Steps 1 to 6: `scripts/data_cleaning.py` and `data_cleaning.ipynb`; step 7: `scr
 - **Tools**: `openai` client (OpenAI-compatible APIs), Mistral API, LM Studio.
 - **Output**: the *Smart Analysis* section of the dashboard.
 
-## 📌 Part E: Remote Access for Usability Tests
-- **Objective**: Let planners test the dashboard in their own browser with the real data.
-- **Actions**: `./share.sh` starts Streamlit and an ngrok tunnel; the app asks for `APP_PASSWORD` (set in `.env`, read again at every login, so a new password applies without a restart; a password given on the command line, e.g. `APP_PASSWORD=` for a local test, wins). The data stays on this Mac; the dashboard is reachable only while the script runs.
-- **Limits**: one shared password, link changes at each start, third party (ngrok) in the path: acceptable for a short test, not for production. Details in `tools_justification.md`, section 12.
+## 📌 Part E: Online Access for Usability Tests
+- **Objective**: Let planners test the dashboard in their own browser with the real data, also from the Roche network.
+- **Actions**: the dashboard is deployed on Streamlit Community Cloud from the `main` branch. `scripts/data_bundle.py` encrypts the data files into `deploy/data.enc` (the only data file pushed); the app decrypts them at its start with `DATA_KEY` and asks for `APP_PASSWORD`, both from the app's secrets. Locally, the password comes from `.env` (read again at every login; a password given on the command line, e.g. `APP_PASSWORD=` for a local test, wins).
+- **Limits**: one shared password; the data runs on Streamlit's servers (US), with Marco's agreement. Details in `tools_justification.md`, section 12. Tunnels from this Mac (ngrok, Cloudflare) were tried first and dropped: the Roche network blocks them.
 
 ## 📌 Part F: Tests
 - **Actions**: `venv/bin/python -m pytest -q tests` (64 tests), synthetic data only, fake API clients: no network, no key, no Roche data.

@@ -44,7 +44,7 @@ st.set_page_config(
 ui.apply_style()  # Look of the Roche ION Material Availability dashboard (scripts/ui.py)
 
 
-# Password gate for remote access (tunnel from this Mac): active only when APP_PASSWORD is set in .env
+# Password gate: active when APP_PASSWORD is set (.env locally, the secrets once deployed; required there)
 def check_password():
     password = config.app_password()   # re-read from .env: a new password applies without a restart
     if not password and config.ON_CLOUD:   # deployed copy: never open without a password

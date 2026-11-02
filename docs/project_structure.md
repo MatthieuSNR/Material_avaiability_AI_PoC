@@ -74,7 +74,6 @@ Roche_AI_PoC/
 ├── .streamlit/config.toml         # Theme close to the ION Material Availability dashboard
 ├── outputs/                       # Local outputs, not pushed (demo teaser)
 ├── deploy/data.enc                # Data of the deployed app, encrypted (Fernet); the only data file on GitHub
-├── share.sh                       # Shares the dashboard through ngrok + Cloudflare tunnels (usability tests)
 ├── requirements.txt               # Python dependencies (minimum versions)
 ├── .env / .env.example            # API keys and app password (.env never pushed)
 └── README.md                      # Overview, tools, how to run

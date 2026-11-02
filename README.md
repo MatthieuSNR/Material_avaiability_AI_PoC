@@ -13,7 +13,7 @@ This project aims to **extract actionable insights** for Roche’s planner comme
 - **Translation**: German entries translated to English with DeepL (`Comment_EN`), after pseudonymisation; a jargon glossary (`lexicon/glossary_de_en.csv`, e.g. *Vorzug* → pull-in, *Orderbuch* → source list) and a cache (each entry paid for once).
 - **Tracking table** (`data/item_tracking.csv`): one row per day and item from **all** snapshot rows (also without comment), for the trends, the impacts and the weak signals.
 - **Streamlit dashboard "Insights Lab"** (`scripts/app.py`): one page, a menu over the full width, a password page when shared. Sections: **Overview** (material status tiles, top root causes with stakeholder options), **Filtered Comments** (column picker), **Most Frequent Comments** (similar wordings grouped), **Root Cause Trends** (all snapshots, what changed between two weeks), **Key Statistics**, **Impact by Root Cause**, **Weak Signals** (phrases, context, watch list), **Smart Analysis** (Mistral API, pseudonymised; copy / Word / text export). Sidebar filters (MRP controller, purchasing group, vendor, material, root cause, impact, timeframe) apply everywhere; saved views; PNG export of every chart; explanations and statistics folded for the analysts.
-- **Remote access** (`share.sh`): testers open the dashboard in their own browser through an ngrok tunnel or a Cloudflare tunnel (for networks that block ngrok, e.g. Roche), behind a password; the data stays on this Mac.
+- **Online access** (Streamlit Community Cloud): testers open the dashboard at a fixed link, behind a password; the data is pushed to GitHub only encrypted (`deploy/data.enc`).
 - **Tests**: 64 pytest tests on synthetic data, no network.
 
 ## 🛠️ Tools & Libraries
@@ -39,9 +39,7 @@ Versions installed in `venv` (Python 3.12.4); minimum versions in `requirements.
 | python-dotenv | 1.2.4 | Keys and password from `.env` |
 | Jupyter | 1.1.1 | Notebooks: one cell per pipeline step |
 | pytest | 9.1.1 | Tests (synthetic data, fake API clients) |
-| ngrok | 3.20.0 (free plan) | Tunnel for the remote usability tests |
 | Streamlit Community Cloud | free plan | Permanent hosting of the dashboard (data encrypted in the repository, `cryptography` Fernet) |
-| cloudflared | 2026.10.7 (quick tunnel, no account) | Second tunnel, for networks that block ngrok (e.g. Roche) |
 | Git / GitHub | — | Versioning (code and documentation only) |
 
 *(See [docs/tools_justification.md](docs/tools_justification.md) for why each tool was chosen and its limits.)*
@@ -80,7 +78,6 @@ Roche_AI_PoC/
 ├── docs/                        # project_steps.md, project_structure.md, tools_justification.md
 ├── assets/, .streamlit/         # Roche logo, favicon, theme
 ├── deploy/data.enc              # Data of the deployed app, encrypted (key DATA_KEY: .env + Streamlit secrets)
-├── share.sh                     # Shares the dashboard through ngrok + Cloudflare (usability tests)
 ├── requirements.txt
 └── .env / .env.example          # Keys and password (.env never pushed)
 ```
@@ -121,20 +118,10 @@ Every file is described in [docs/project_structure.md](docs/project_structure.md
    ```
    Use the Streamlit of the project environment (`venv/bin/streamlit`, or `streamlit` after `source venv/bin/activate`): another Python (e.g. Anaconda) lacks some packages, such as `streamlit-sortables` for the column order. The dashboard opens at http://localhost:8501. If `APP_PASSWORD` is set in `.env`, the password page also appears locally.
 
-4. **Share the dashboard for a usability test** (testers in their own browser):
-   ```bash
-   ./share.sh
-   ```
-   - Copy the `Forwarding https://….ngrok-free.app` line and send this link + the password (`grep APP_PASSWORD .env`) to the tester.
-   - The tester clicks **Visit Site** on the ngrok page, then enters the password.
-   - **Network that blocks ngrok (e.g. Roche)**: send instead the Cloudflare link printed before the ngrok screen (`https://….trycloudflare.com`, copied to the clipboard and in `outputs/cloudflare_link.txt`); no warning page, straight to the password. It changes at each start. Needs `brew install cloudflared` once.
-   - Keep the terminal open and the Mac awake and online during the test; **Ctrl+C** stops the sharing.
-   - Run it **once** only (free plan: one tunnel at a time); the link changes at each start, unless `NGROK_DOMAIN` is set in `.env` (the free static domain of the ngrok account, dashboard.ngrok.com → Domains): then the link stays the same and the ngrok page shows only once per browser and week.
-   - A new `APP_PASSWORD` applies at the next login, without restarting.
-
-   **Or permanently on Streamlit Community Cloud** (fixed link, this Mac can be off; Marco agreed to host the data there):
+4. **Put the dashboard online** (Streamlit Community Cloud: fixed link, this Mac can be off; Marco agreed to host the data there):
    - The data goes to GitHub **encrypted only**: `deploy/data.enc` (built by `python scripts/data_bundle.py`, which creates `DATA_KEY` in `.env` the first time). After a new run of the pipeline: rebuild it, commit and push `deploy/data.enc`; the app restarts by itself.
-   - Once, on [share.streamlit.io](https://share.streamlit.io) (sign in with GitHub): *Create app* → repository `MatthieuSNR/Roche_AI_PoC`, branch `feat/comment-entries` (`main` once merged), main file `scripts/app.py`; *Advanced settings* → Python 3.12 and the secrets `APP_PASSWORD`, `DATA_KEY` (copied from `.env`) and, for the cloud AI summary, `MISTRAL_API_KEY`.
+   - Once, on [share.streamlit.io](https://share.streamlit.io) (sign in with GitHub): *Create app* → repository `MatthieuSNR/Roche_AI_PoC`, branch `main`, main file `scripts/app.py`; *Advanced settings* → the secrets `APP_PASSWORD`, `DATA_KEY` (the complete value from `.env`) and, for the cloud AI summary, `MISTRAL_API_KEY`.
+   - Send the testers the `….streamlit.app` link and the password. A new password in the secrets applies within a minute.
    - The Cloud installs `scripts/requirements.txt` (dashboard only, CPU PyTorch), not the root file. Without `APP_PASSWORD` the deployed app refuses to open.
 
 5. **Run the tests**:
