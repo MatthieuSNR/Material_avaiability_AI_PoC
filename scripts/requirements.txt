@@ -1,14 +1,15 @@
 # Dependencies of the dashboard deployed on Streamlit Community Cloud (entry point scripts/app.py: the Cloud reads
 # this file, next to the entry point, instead of the root requirements.txt, which also lists the pipeline,
-# notebooks and tests). Versions as in the venv of this Mac.
+# notebooks and tests). Minimum versions (those of the venv of this Mac): the Cloud may run a newer Python (3.14),
+# for which the older exact versions have no package.
 --extra-index-url https://download.pytorch.org/whl/cpu
 torch                  # CPU build (~200 MB instead of the GPU one, too large for the Cloud)
-streamlit==1.32.0
-streamlit-sortables==0.3.1
-pandas==2.2.3
-numpy==1.26.4
-matplotlib==3.8.4
-scikit-learn==1.4.2
+streamlit>=1.32
+streamlit-sortables>=0.3
+pandas>=2.2
+numpy>=1.26
+matplotlib>=3.8
+scikit-learn>=1.4
 scipy>=1.11
 sentence-transformers>=3,<4
 openai>=1.30
