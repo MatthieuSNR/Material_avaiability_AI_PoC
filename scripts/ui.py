@@ -554,6 +554,15 @@ def _chart_name(fig):
     return re.sub(r"[^A-Za-z0-9]+", "_", title.split(" — ")[0]).strip("_").lower() or "chart"
 
 
+def chart_title(head, selection, width):
+    """'head — selection' when it fits on `width` characters, otherwise the selection on its own lines under the
+    head (a long vendor or several filters would be cut at the edge of the chart)."""
+    import textwrap
+    if len(head) + 3 + len(selection) <= width:
+        return f"{head} — {selection}"
+    return "\n".join([head] + textwrap.wrap(selection, width))
+
+
 def chart(draw, *args, name=None, tight=True, **kwargs):
     """Draw a chart as a white card, with a 'PNG' link under it that saves the picture (in the browser: no
     rerun). draw(*args, **kwargs) returns a matplotlib figure; the picture is kept for the same inputs, so a

@@ -454,7 +454,7 @@ with tab2:
         def draw_bars(counts, colors, title, total, height):
             fig, ax = plt.subplots(figsize=(6, height), facecolor="white")
             bars = ax.barh(counts.index[::-1], counts.values[::-1], color=colors[::-1])
-            ax.set_title(title)
+            fig.suptitle(title, fontsize=12, fontweight="bold")  # centred on the figure, not over the bars only
             ax.set_xlabel("Number of Comments")
             ax.set_xlim(0, counts.max() * 1.22)  # room for the labels at the end of the bars
             # Add the count and the share of the selection's comments at the end of each bar
@@ -467,7 +467,8 @@ with tab2:
         with col_bar:
             # tight=False: keep the exact figure size (same height as the pie)
             ui.chart(draw_bars, root_cause_counts, colors,
-                     f"Top {len(root_cause_counts)} Root Causes{view_label} — {selection_name}", total_comments,
+                     ui.chart_title(f"Top {len(root_cause_counts)} Root Causes{view_label}", selection_name, 46),
+                     total_comments,
                      chart_height, name="top_root_causes", tight=False)
             st.caption(f"% = share of the {total_comments} comments of the selection. "
                        f"{no_cause_count} comments ({no_cause_count / total_comments * 100:.1f}%) have no root cause.")
@@ -489,7 +490,7 @@ with tab2:
             fig_pie = plt.figure(figsize=(3.85, height), facecolor="white")  # 3.85: same height as the bars once in the cards
             legend_rows = -(-len(labels) // 2)
             legend_frac = (0.15 + legend_rows * 0.15) / height
-            title_frac = 0.35 / height
+            title_frac = (0.35 + 0.17 * title.count("\n")) / height
             ax_pie = fig_pie.add_axes([0.02, legend_frac + 0.02, 0.96, 1 - legend_frac - title_frac - 0.03])
             palette = plt.cm.tab20.colors if n_top > 12 else plt.cm.Set3.colors
             pie_colors = list(palette[:n_top]) + (["#BDBDBD"] if has_other else [])  # "Other" in grey
@@ -510,7 +511,8 @@ with tab2:
 
         with col_pie:
             ui.chart(draw_pie, [int(v) for v in pie_values], pie_labels, len(top_counts), other_count > 0,
-                     f"Root Cause Share{view_label} — {selection_name}", chart_height, name="root_cause_share",
+                     ui.chart_title(f"Root Cause Share{view_label}", selection_name, 42), chart_height,
+                     name="root_cause_share",
                      tight=False)
             # Keep the caption only for the "Other" context
             st.caption(f"Share among the comments WITH a root cause"

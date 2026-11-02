@@ -266,7 +266,7 @@ def _trend_chart(weekly, by, selection_name):
                 color=colors[i % 20] if colors else None)
     ax.set_xlim(weekly.index.min() - pd.Timedelta(days=3), weekly.index.max() + pd.Timedelta(days=3))
     ax.set_ylim(bottom=0)
-    ax.set_title(f"Items per {by.lower()} and week — {selection_name}")
+    ax.set_title(ui.chart_title(f"Items per {by.lower()} and week", selection_name, 110))
     ax.set_ylabel("Items with this root cause during the week")
     ax.legend(bbox_to_anchor=(1.02, 1), loc="upper left", fontsize=8)
     plt.setp(ax.get_xticklabels(), rotation=45)
