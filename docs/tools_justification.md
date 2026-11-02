@@ -414,7 +414,7 @@ Each folder and file has a **clear purpose**, making the project **easy to maint
 ### **How It Works in the Project**
 - **`share.sh`** (project root): starts Streamlit on port 8505 and an ngrok tunnel to it; `caffeinate` keeps the Mac awake while the app is shared. Ctrl+C stops both.
 - **Password page** (`check_password` in `scripts/app.py`): active when `APP_PASSWORD` is set in `.env`, since anyone with the link could otherwise see the data. `share.sh` refuses to start without a password. Empty password = local use, no page. The password is read again at every login: changing it needs no restart.
-- The visitor first sees an **ngrok warning page** (free plan) and clicks *Visit Site*, then enters the password.
+- The visitor first sees an **ngrok warning page** (free plan) and clicks *Visit Site*, then enters the password. The page cannot be removed from this side: ngrok skips it only for a request carrying the `ngrok-skip-browser-warning` header, which a normal browser does not send, or on a paid plan. With `NGROK_DOMAIN` in `.env` (the account's free static domain) the link stays the same, so ngrok's 7-day cookie spares the page on later visits.
 
 ### **Limits**
 - The dashboard is reachable **only while the Mac is on, connected and `share.sh` runs**.

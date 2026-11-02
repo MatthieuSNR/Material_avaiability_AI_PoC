@@ -123,7 +123,7 @@ Every file is described in [docs/project_structure.md](docs/project_structure.md
    - Copy the `Forwarding https://….ngrok-free.app` line and send this link + the password (`grep APP_PASSWORD .env`) to the tester.
    - The tester clicks **Visit Site** on the ngrok page, then enters the password.
    - Keep the terminal open and the Mac awake and online during the test; **Ctrl+C** stops the sharing.
-   - Run it **once** only (free plan: one tunnel at a time); the link changes at each start.
+   - Run it **once** only (free plan: one tunnel at a time); the link changes at each start, unless `NGROK_DOMAIN` is set in `.env` (the free static domain of the ngrok account, dashboard.ngrok.com → Domains): then the link stays the same and the ngrok page shows only once per browser and week.
    - A new `APP_PASSWORD` applies at the next login, without restarting.
 
 5. **Run the tests**:
