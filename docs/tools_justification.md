@@ -38,6 +38,13 @@ Each choice is grounded in **technical requirements, academic standards, and ind
  | **Compatibility**     | Version **3.12.4** ensures compatibility with all required libraries (e.g., `spaCy 3.8.16`, `pandas 2.2.3`).                                                                                     |
  | **Academic Adoption** | Python is **the most cited language** in NLP/ML research papers (e.g., [arXiv](https://arxiv.org/), [ACL Anthology](https://aclanthology.org/)).                                                                   |
 
+### **Permanent access: Streamlit Community Cloud**
+- **Why**: the Roche network blocks both tunnels; a `….streamlit.app` link is ordinary web hosting, fixed, and works while this Mac is off. Marco agreed to host the (pseudonymised) data there.
+- **Data never in clear on GitHub** (the repository is public): `scripts/data_bundle.py` zips the files the dashboard reads (`cleaned_comments.csv`, `item_tracking.csv`, embedding cache, saved views) and encrypts them with **Fernet** (`cryptography`: AES-128 + HMAC) into `deploy/data.enc`, the only data file pushed. The key `DATA_KEY` is in `.env` and in the app's secrets; at its start the deployed app unpacks the files (`unpack_if_needed`).
+- **Secrets**: no `.env` on the Cloud; `config.py` copies the Streamlit secrets (`APP_PASSWORD`, `DATA_KEY`, `MISTRAL_API_KEY`) into the environment, so the modules are unchanged. Without `APP_PASSWORD` the deployed app does not open.
+- **Dependencies**: `scripts/requirements.txt` (next to the entry point, read by the Cloud): the dashboard only, PyTorch CPU build.
+- **Limits**: the data is on Streamlit's (Snowflake) servers in the US; an old `data.enc` stays in the Git history (readable only with the key: never change the key without rebuilding, never push it); the free app sleeps after a few days without visits (one click wakes it up).
+
 ### **Alternatives Considered**
  | **Alternative** | **Rejection Reason**                                                                                     |
  |-----------------|-------------------------------------------------------------------------------------------------------|
@@ -426,9 +433,9 @@ Each folder and file has a **clear purpose**, making the project **easy to maint
 ### **Alternatives Considered**
  | **Alternative** | **Rejection Reason** |
  |-----------------|----------------------|
- | Streamlit Community Cloud | Free and permanent, but the **confidential data would have to be uploaded** to an external server (the GitHub repository is public). |
+ | Streamlit Community Cloud | **Added later** (Roche's network blocks ngrok and Cloudflare tunnels): see *Permanent access* below. |
  | Internal Roche hosting (Posit Connect, Streamlit in Snowflake...) | The right option for an adopted tool, but requires IT approval: too heavy for a prototype test. |
- | Cloudflare Tunnel / Tailscale | Equivalent tunnels; ngrok was already installed and configured. Tailscale would also require every tester to install a client. |
+ | Cloudflare Tunnel / Tailscale | Cloudflare quick tunnel **added** as a second link in `share.sh`; Tailscale would require every tester to install a client. |
 
 ### **References**
 - [ngrok Documentation](https://ngrok.com/docs)

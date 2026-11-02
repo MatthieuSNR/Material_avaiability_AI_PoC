@@ -14,5 +14,6 @@ langdetect>=1.0.9      # language of every journal entry (DE / EN)
 openpyxl>=3.1         # Excel sheet of the abbreviations for the planners
 spacy>=3.7             # notebook explorations only: lemmas (en_core_web_sm, de_core_news_sm)
 python-dotenv>=1.0     # keys and password from .env
+cryptography>=42       # encrypted data of the deployed app (scripts/data_bundle.py)
 jupyter>=1.0           # notebooks of the pipeline (installs nbconvert)
 pytest>=8.0            # tests (synthetic data, no network)

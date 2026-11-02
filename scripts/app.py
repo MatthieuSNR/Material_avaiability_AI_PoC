@@ -47,6 +47,9 @@ ui.apply_style()  # Look of the Roche ION Material Availability dashboard (scrip
 # Password gate for remote access (tunnel from this Mac): active only when APP_PASSWORD is set in .env
 def check_password():
     password = config.app_password()   # re-read from .env: a new password applies without a restart
+    if not password and config.ON_CLOUD:   # deployed copy: never open without a password
+        st.error("Set APP_PASSWORD in the secrets of the app (Streamlit Cloud → Settings → Secrets).")
+        st.stop()
     if not password or st.session_state.get("authenticated"):
         return
     st.title("Material Availability – Insights Lab")
@@ -59,6 +62,11 @@ def check_password():
     st.stop()
 
 check_password()
+
+# Deployed copy: the data comes encrypted with the code (deploy/data.enc, scripts/data_bundle.py)
+if config.ON_CLOUD:
+    import data_bundle
+    data_bundle.unpack_if_needed(os.getenv("DATA_KEY", ""))
 
 
 # Load cleaned data (built by scripts/data_cleaning.py, translated by scripts/translation.py)

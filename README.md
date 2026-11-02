@@ -40,6 +40,7 @@ Versions installed in `venv` (Python 3.12.4); minimum versions in `requirements.
 | Jupyter | 1.1.1 | Notebooks: one cell per pipeline step |
 | pytest | 9.1.1 | Tests (synthetic data, fake API clients) |
 | ngrok | 3.20.0 (free plan) | Tunnel for the remote usability tests |
+| Streamlit Community Cloud | free plan | Permanent hosting of the dashboard (data encrypted in the repository, `cryptography` Fernet) |
 | cloudflared | 2026.10.7 (quick tunnel, no account) | Second tunnel, for networks that block ngrok (e.g. Roche) |
 | Git / GitHub | — | Versioning (code and documentation only) |
 
@@ -71,11 +72,14 @@ Roche_AI_PoC/
 │   ├── llm_summary.py           # Smart Analysis: prompt, Mistral API, LM Studio
 │   ├── app.py                   # Streamlit dashboard
 │   ├── ui.py                    # Look, menu, switches, charts, tables, loading screen
-│   ├── config.py                # Keys and password from .env
+│   ├── config.py                # Keys and password from .env (Streamlit secrets once deployed)
+│   ├── data_bundle.py           # Encrypted copy of the data for the deployed app (deploy/data.enc)
+│   ├── requirements.txt         # Dependencies of the deployed dashboard (Streamlit Cloud)
 │   └── *.ipynb                  # data_cleaning, translation, llm_summary: step by step
 ├── tests/                       # pytest (64 tests)
 ├── docs/                        # project_steps.md, project_structure.md, tools_justification.md
 ├── assets/, .streamlit/         # Roche logo, favicon, theme
+├── deploy/data.enc              # Data of the deployed app, encrypted (key DATA_KEY: .env + Streamlit secrets)
 ├── share.sh                     # Shares the dashboard through ngrok + Cloudflare (usability tests)
 ├── requirements.txt
 └── .env / .env.example          # Keys and password (.env never pushed)
@@ -127,6 +131,11 @@ Every file is described in [docs/project_structure.md](docs/project_structure.md
    - Keep the terminal open and the Mac awake and online during the test; **Ctrl+C** stops the sharing.
    - Run it **once** only (free plan: one tunnel at a time); the link changes at each start, unless `NGROK_DOMAIN` is set in `.env` (the free static domain of the ngrok account, dashboard.ngrok.com → Domains): then the link stays the same and the ngrok page shows only once per browser and week.
    - A new `APP_PASSWORD` applies at the next login, without restarting.
+
+   **Or permanently on Streamlit Community Cloud** (fixed link, this Mac can be off; Marco agreed to host the data there):
+   - The data goes to GitHub **encrypted only**: `deploy/data.enc` (built by `python scripts/data_bundle.py`, which creates `DATA_KEY` in `.env` the first time). After a new run of the pipeline: rebuild it, commit and push `deploy/data.enc`; the app restarts by itself.
+   - Once, on [share.streamlit.io](https://share.streamlit.io) (sign in with GitHub): *Create app* → repository `MatthieuSNR/Roche_AI_PoC`, branch `feat/comment-entries` (`main` once merged), main file `scripts/app.py`; *Advanced settings* → Python 3.12 and the secrets `APP_PASSWORD`, `DATA_KEY` (copied from `.env`) and, for the cloud AI summary, `MISTRAL_API_KEY`.
+   - The Cloud installs `scripts/requirements.txt` (dashboard only, CPU PyTorch), not the root file. Without `APP_PASSWORD` the deployed app refuses to open.
 
 5. **Run the tests**:
    ```bash

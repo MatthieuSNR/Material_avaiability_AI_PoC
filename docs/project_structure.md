@@ -48,7 +48,9 @@ Roche_AI_PoC/
 │   ├── ui.py                      # Look and components: ION-like top bar and menu, section titles with Options,
 │   │                              #   switches shown in the browser, charts (kept per data, PNG link), column picker,
 │   │                              #   coloured comparisons, loading screen, Smart Analysis card (copy / Word / text)
-│   ├── config.py                  # Reads the keys from .env; the app password is read again at every login
+│   ├── config.py                  # Reads the keys from .env (Streamlit secrets once deployed); the app password is read again at every login
+│   ├── data_bundle.py             # Encrypted copy of the data for the deployed app (deploy/data.enc, key DATA_KEY)
+│   ├── requirements.txt           # Dependencies of the dashboard deployed on Streamlit Community Cloud
 │   │   # --- Notebooks: run each step and check its result
 │   ├── data_cleaning.ipynb        # Steps 1-6, one cell per step, + explorations A-C (spaCy tokens, keywords, heatmap)
 │   ├── translation.ipynb          # Step 7 (7.1-7.5)
@@ -71,6 +73,7 @@ Roche_AI_PoC/
 ├── assets/                        # Roche logo and favicon
 ├── .streamlit/config.toml         # Theme close to the ION Material Availability dashboard
 ├── outputs/                       # Local outputs, not pushed (demo teaser)
+├── deploy/data.enc                # Data of the deployed app, encrypted (Fernet); the only data file on GitHub
 ├── share.sh                       # Shares the dashboard through ngrok + Cloudflare tunnels (usability tests)
 ├── requirements.txt               # Python dependencies (minimum versions)
 ├── .env / .env.example            # API keys and app password (.env never pushed)
