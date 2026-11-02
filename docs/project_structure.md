@@ -71,7 +71,7 @@ Roche_AI_PoC/
 ├── assets/                        # Roche logo and favicon
 ├── .streamlit/config.toml         # Theme close to the ION Material Availability dashboard
 ├── outputs/                       # Local outputs, not pushed (demo teaser)
-├── share.sh                       # Shares the dashboard through an ngrok tunnel (usability tests)
+├── share.sh                       # Shares the dashboard through ngrok + Cloudflare tunnels (usability tests)
 ├── requirements.txt               # Python dependencies (minimum versions)
 ├── .env / .env.example            # API keys and app password (.env never pushed)
 └── README.md                      # Overview, tools, how to run
