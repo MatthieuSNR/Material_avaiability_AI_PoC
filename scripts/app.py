@@ -761,6 +761,9 @@ def render_ai_summary(mode: str):
         text = tidy("".join(result["parts"]))  # up to the last complete sentence
         if "error" in result:
             st.error(f"The analysis could not be generated: {result['error']}")
+            if not cloud and "context length" in str(result["error"]):   # the prompt needs ~5,500 tokens
+                st.info("In LM Studio, load the model with a context length of 8192 (model settings → Context "
+                        "Length), or in a terminal: `lms load mistralai/mistral-7b-instruct-v0.3 --context-length 8192`.")
         elif not text:
             st.error("The analysis could not be generated: empty answer.")
         else:
