@@ -22,7 +22,7 @@ import time
 # Make scripts/ importable so we can reuse our modules
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from llm_summary import (stream_summary, stream_summary_cloud, tidy, is_server_available,
-                         is_cloud_configured)
+                         is_cloud_configured, MODEL_NAME)
 from pseudonymise import PromptPseudonymiser
 from entries import ENTRY_SEPARATOR
 from stats_engine import compute_stats
@@ -643,8 +643,8 @@ with tab6:
 
 # ================= SECTION 7: Smart Analysis =================
 # Two ways to write the same analysis from the same pandas statistics:
-#  - Cloud: Mistral API (shown in the dashboard); names are always pseudonymised before sending.
-#  - Local: LM Studio on this machine, kept as a backup: render_ai_summary("local") (not shown).
+#  - Deployed (Streamlit Cloud): Mistral API; names are always pseudonymised before sending.
+#  - On this Mac (localhost): LM Studio, the local model; no data leaves the machine.
 @st.cache_resource(show_spinner=False)
 def pseudonymiser_template(n_rows: int):
     """Entity lists (vendors, materials...) are built once; each request gets a fresh() copy."""
@@ -661,15 +661,12 @@ def render_ai_summary(mode: str):
                   selected_material_label, selected_root_cause, selected_impact)) + (timeframe_option,)
 
     pseudonymise_on = cloud  # names, vendors and material numbers are always replaced before sending
-    if cloud:
-        st.caption("A written review of the current selection: key findings, what drives the issues, early warnings, "
-                   "risks to escalate and recommended actions, illustrated with planner comments. It uses the findings "
-                   "of the Insights Lab (root cause → impact, weak signals, watch list, long-open comments, recurring "
-                   "issues) and knows the filters, so it does not state the obvious. All figures are computed from "
-                   "the data; the analysis only interprets them.")
-    else:
-        st.caption("Generated locally via LM Studio: no data leaves the machine. "
-                   "All figures are computed by pandas; the LLM only interprets them.")
+    st.caption("A written review of the current selection: key findings, what drives the issues, early warnings, "
+               "risks to escalate and recommended actions, illustrated with planner comments. It uses the findings "
+               "of the Insights Lab (root cause → impact, weak signals, watch list, long-open comments, recurring "
+               "issues) and knows the filters, so it does not state the obvious. All figures are computed from "
+               "the data; the analysis only interprets them."
+               + ("" if cloud else " Written by the local model (LM Studio): no data leaves this machine."))
 
     if stats["total_comments"] == 0:
         st.info("No comments match the current filters.")
@@ -678,11 +675,12 @@ def render_ai_summary(mode: str):
         st.warning("Smart Analysis is not configured: add MISTRAL_API_KEY to the .env file.")
         return
     if not cloud and not is_server_available():
-        st.warning("LM Studio server not reachable. Start it (Developer tab) and load the model.")
+        st.warning("LM Studio server not reachable. Start it (Developer tab) and load the model "
+                   f"({MODEL_NAME}).")
         return
 
     pseudonymiser = pseudonymiser_template(len(df)).fresh() if (cloud and pseudonymise_on) else None
-    if st.button("Run Smart Analysis" if cloud else "Generate summary", type="primary", key=f"generate_{mode}"):
+    if st.button("Run Smart Analysis", type="primary", key=f"generate_{mode}"):
         # The LLM runs in a background thread while the loading screen shows the analysis
         # steps. Every value shown on the screen is a real figure of the current selection.
         # The answer is streamed: it appears word by word as soon as the model writes.
@@ -788,6 +786,6 @@ with tab_signals:
 
 with tab7:
     ui.section("ai-summary", SECTION_TITLES["ai-summary"])
-    render_ai_summary("cloud")  # local LLM (LM Studio) kept as a backup: render_ai_summary("local")
+    render_ai_summary("cloud" if config.ON_CLOUD else "local")  # localhost: LM Studio; Streamlit Cloud: Mistral API
 
 ui.page_end()  # room under Smart Analysis: the menu brings its title up under the menu too

@@ -191,7 +191,7 @@ DeepL is a **cloud service**: only the comment text is sent (no vendor, material
 
 ---
 
-## **📌 6. Smart Analysis: Mistral API (cloud) with a local LLM as backup (LM Studio)**
+## **📌 6. Smart Analysis: Mistral API (deployed app) and a local LLM on this Mac (LM Studio)**
 
 ### **What the LLM does, and what it does not**
 **pandas computes every number** (`scripts/stats_engine.py`); the LLM only **writes** the analysis from these precomputed statistics and the most frequent comments, and is instructed never to compute or invent a figure. This is why a small model is sufficient and why the figures of the analysis can be checked against the dashboard.
@@ -221,13 +221,13 @@ DeepL is a **cloud service**: only the comment text is sent (no vendor, material
 - **Quality**: LLM output is not deterministic and there is no formal evaluation yet (faithfulness of figures and quotes, comparison cloud vs local). The figures are protected by construction (pandas), the interpretation is not.
 - **Availability**: the cloud analysis needs the network and a valid key; the free plan can answer 429 under load.
 
-### **Local backup: LM Studio (Mistral 7B Instruct v0.3)**
+### **Local model: LM Studio (Mistral 7B Instruct v0.3)**
  | **Criteria**          | **Justification** |
  |-----------------------|-------------------|
  | **Confidentiality**   | The model runs **on the laptop** (`http://127.0.0.1:1234/v1`): no Roche data leaves the machine. Still the reference if data governance forbids any external API. |
  | **Cost**              | No API fee, no usage limit. |
  | **Limits**            | ≈5 tokens/s on an Apple M3 with 16 GB when memory is short, so 40–60 s per analysis and a hot laptop; Mistral 7B does not accept the `system` role (instructions are merged into the user message). |
- | **Status**            | Kept in the code (`stream_summary`, `render_ai_summary("local")`, `is_server_available`) but no longer shown in the dashboard. |
+ | **Status**            | Used when the dashboard runs on this Mac (localhost, e.g. demos): no API limit or overload (Mistral's 429 "out of capacity" on the free plan). The deployed app (Streamlit Cloud) uses the Mistral API. |
 
 ### **Alternatives Considered**
  | **Alternative** | **Reason** |

@@ -39,7 +39,7 @@ Roche_AI_PoC/
 │   ├── stats_engine.py            # Statistics of the dashboard and of the Smart Analysis (pandas only)
 │   ├── insights.py                # Grouping of similar comments, weekly trends, status change, root cause x impact,
 │   │                              #   stakeholders, weak signals (phrases, context, prediction model)
-│   ├── llm_summary.py             # Smart Analysis: facts, prompt, Mistral API (cloud) or LM Studio (local backup)
+│   ├── llm_summary.py             # Smart Analysis: facts, prompt, Mistral API (deployed app) or LM Studio (on this Mac)
 │   │   # --- Dashboard
 │   ├── app.py                     # Streamlit dashboard: password page, sidebar filters and views, Overview, Filtered
 │   │                              #   Comments, Key Statistics, Smart Analysis; calls insights_pages for 4 sections

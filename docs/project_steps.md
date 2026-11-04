@@ -91,8 +91,8 @@ Steps 1 to 6: `scripts/data_cleaning.py` and `data_cleaning.ipynb`; step 7: `scr
   - Compact prompt: key statistics (every key states its unit), the most frequent informative comments of the three main root causes, the findings of the Insights Lab and the filters of the selection.
   - Five fixed sections: Key findings, What drives the issues, Early warnings, Risks to escalate, Recommended actions; 250 to 320 words asked; the answer is streamed (temperature 0.2).
   - Display: one bold phrase per bullet at most, no markdown asterisks left; **Copy** (formatted, for Word or an e-mail), **Download Word** and **Download text** under the analysis (in the browser).
-  - **Cloud** (shown in the dashboard): Mistral API, default model `ministral-14b-latest` (`MISTRAL_MODEL` in `.env`), pseudonymised prompt. Chosen on 16 Oct. so that the app can run on any laptop and be deployed, and the Mac no longer heats up.
-  - **Local** (backup, `render_ai_summary("local")`): LM Studio with Mistral 7B Instruct v0.3 (`LM_STUDIO_BASE_URL`, `LM_STUDIO_MODEL` in `.env`); no data leaves the machine.
+  - **Cloud** (the deployed dashboard, Streamlit Cloud): Mistral API, default model `ministral-14b-latest` (`MISTRAL_MODEL` in `.env`), pseudonymised prompt. Chosen on 16 Oct. so that the app can run on any laptop and be deployed, and the Mac no longer heats up.
+  - **Local** (the dashboard on this Mac, localhost; chosen by `config.ON_CLOUD`): LM Studio with Mistral 7B Instruct v0.3 (`LM_STUDIO_BASE_URL`, `LM_STUDIO_MODEL` in `.env`); no data leaves the machine.
   - **Notebook** `llm_summary.ipynb`: statistics, prompt, pseudonymised prompt (checks that no real vendor name is sent), then the cloud or local analysis behind a switch (`RUN_CLOUD`, `RUN_LOCAL`), so that Run All calls no model.
 - **Tools**: `openai` client (OpenAI-compatible APIs), Mistral API, LM Studio.
 - **Output**: the *Smart Analysis* section of the dashboard.
@@ -147,7 +147,7 @@ source venv/bin/activate
 - [x] Split the comment journal into entries, remove the signatures (logins), cleaning in seven checkable steps.
 - [x] Comment-centred statistics, filters and saved views in the dashboard.
 - [x] Pseudonymisation before DeepL and before the Mistral API.
-- [x] Smart Analysis with a cloud model; local model kept as backup.
+- [x] Smart Analysis with a cloud model online and the local model on this Mac.
 - [ ] Validate with Roche (tool engineer / IT) the use of an external LLM API and the hosting of a demo outside Roche.
 - [ ] Check Mistral's data retention and training terms for the plan used, and cite them in the thesis.
 - [ ] Revoke the DeepL key that was once pushed to GitHub (it remains in the Git history).

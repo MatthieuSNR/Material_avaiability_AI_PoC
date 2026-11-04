@@ -12,7 +12,7 @@ This project aims to **extract actionable insights** for Roche’s planner comme
 - **Abbreviation library** (`lexicon/abbreviations.csv`): German and English abbreviations of the comments, reviewed by Matthieu and Alexis on 28.10; the 114 certain ones are written out (`Comment_Expanded`) before translation; names (suppliers, instruments, SAP codes) and ambiguous ones stay as written.
 - **Translation**: German entries translated to English with DeepL (`Comment_EN`), after pseudonymisation; a jargon glossary (`lexicon/glossary_de_en.csv`, e.g. *Vorzug* → pull-in, *Orderbuch* → source list) and a cache (each entry paid for once).
 - **Tracking table** (`data/item_tracking.csv`): one row per day and item from **all** snapshot rows (also without comment), for the trends, the impacts and the weak signals.
-- **Streamlit dashboard "Insights Lab"** (`scripts/app.py`): one page, a menu over the full width, a password page when shared. Sections: **Overview** (material status tiles, top root causes with stakeholder options), **Filtered Comments** (column picker), **Most Frequent Comments** (similar wordings grouped), **Root Cause Trends** (all snapshots, what changed between two weeks), **Key Statistics**, **Impact by Root Cause**, **Weak Signals** (phrases, context, watch list), **Smart Analysis** (Mistral API, pseudonymised; copy / Word / text export). Sidebar filters (MRP controller, purchasing group, vendor, material, root cause, impact, timeframe) apply everywhere; saved views; PNG export of every chart; explanations and statistics folded for the analysts.
+- **Streamlit dashboard "Insights Lab"** (`scripts/app.py`): one page, a menu over the full width, a password page when shared. Sections: **Overview** (material status tiles, top root causes with stakeholder options), **Filtered Comments** (column picker), **Most Frequent Comments** (similar wordings grouped), **Root Cause Trends** (all snapshots, what changed between two weeks), **Key Statistics**, **Impact by Root Cause**, **Weak Signals** (phrases, context, watch list), **Smart Analysis** (LM Studio on this Mac, Mistral API pseudonymised once deployed; copy / Word / text export). Sidebar filters (MRP controller, purchasing group, vendor, material, root cause, impact, timeframe) apply everywhere; saved views; PNG export of every chart; explanations and statistics folded for the analysts.
 - **Online access** (Streamlit Community Cloud): testers open the dashboard at a fixed link, behind a password; the data is pushed to GitHub only encrypted (`deploy/data.enc`).
 - **Tests**: 64 pytest tests on synthetic data, no network.
 
@@ -30,7 +30,7 @@ Versions installed in `venv` (Python 3.12.4); minimum versions in `requirements.
 | SciPy | 1.17.1 | Chi-square and Fisher tests |
 | sentence-transformers (+ PyTorch, transformers) | 3.4.1 (2.14.1, 4.57.6) | Grouping by meaning: local model all-MiniLM-L6-v2 |
 | openai (client) | 3.26.0 | Mistral API (cloud) and LM Studio (local), both OpenAI-compatible |
-| Mistral API / LM Studio | ministral-14b-latest / Mistral 7B | Smart Analysis (cloud) / local backup |
+| Mistral API / LM Studio | ministral-14b-latest / Mistral 7B | Smart Analysis: deployed app / on this Mac (localhost) |
 | Streamlit | 1.32.0 | Dashboard |
 | streamlit-sortables | 0.3.1 | Drag and drop of the table columns |
 | matplotlib | 3.8.4 | Charts of the dashboard (PNG) |
@@ -96,8 +96,8 @@ Every file is described in [docs/project_structure.md](docs/project_structure.md
    | `.env` line | Used for |
    |---|---|
    | `DEEPL_API_KEY` | Translation (step 2: `translation.py`) |
-   | `MISTRAL_API_KEY`, `MISTRAL_MODEL` | Cloud AI summary ([console.mistral.ai](https://console.mistral.ai) → API Keys; default model `ministral-14b-latest`) |
-   | `LM_STUDIO_BASE_URL`, `LM_STUDIO_MODEL` | Local AI summary (LM Studio server started) |
+   | `MISTRAL_API_KEY`, `MISTRAL_MODEL` | Smart Analysis of the deployed app ([console.mistral.ai](https://console.mistral.ai) → API Keys; default model `ministral-14b-latest`) |
+   | `LM_STUDIO_BASE_URL`, `LM_STUDIO_MODEL` | Smart Analysis on this Mac (localhost): LM Studio server started, model loaded |
    | `APP_PASSWORD` | Password page (read again at every login: a change applies without restarting); leave empty for local use |
 
 2. **Build and translate the comments** (after adding new snapshots to `data/Snapshot_2026/`):
