@@ -755,19 +755,18 @@ def _watch_list(items, tracking, model):
     watch["Days since first comment"] = (last_day - watch["First_comment"]).dt.days
     watch = watch.sort_values("Risk", ascending=False).head(25)
     watch["Risk"] = (watch["Risk"] * 100).round(0)
-    ui.picked_table("t_watch", watch[["Risk", "Why", "Text", "VENDOR_NAME", "Root_Cause", "Status_now", "Days since first comment",
-                        "MRP_CONTROLLER", "MATERIAL_DESC"]]
-                 .rename(columns={"Text": "First comment (EN)", "Root_Cause": "Root cause", "VENDOR_NAME": "Vendor",
-                                  "Status_now": "Status now", "MRP_CONTROLLER": "MRP Controller", "MATERIAL_DESC": "Material"}),
-                 use_container_width=True, hide_index=True, column_config={
-                     "Risk": st.column_config.ProgressColumn(
-                         "Risk", format="%d%%", min_value=0, max_value=100,
-                         help="Risk score of the tool (0-100). It ranks the items; it is not a probability to read literally."),
-                     "Why": st.column_config.TextColumn(width="large", help="The 3 elements of the first comment and its "
-                                                                            "context that raise the risk most."),
-                     "First comment (EN)": st.column_config.TextColumn(width="large")})
+    watch["Material number"] = watch["MATERIAL_NUMBER"].astype("int64").astype(str)
+    table = watch[["Risk", "MATERIAL_DESC", "Material number", "Why", "Text", "VENDOR_NAME", "Root_Cause", "Status_now",
+                   "Days since first comment", "MRP_CONTROLLER"]].rename(columns={
+        "MATERIAL_DESC": "Material", "Text": "First comment (EN)", "Root_Cause": "Root cause", "VENDOR_NAME": "Vendor",
+        "Status_now": "Status now", "MRP_CONTROLLER": "MRP Controller"})
+    # '▥ Columns' as on the other tables; the table is in HTML for the Copy button of the material number
+    shown = ui.table_toolbar("t_watchlist", list(table.columns), list(table.columns))
+    ui.copy_table(table[shown], "Material number", bar_column="Risk", wide=("Why", "First comment (EN)"),
+                  nowrap=("Material", "Status now", "MRP Controller"))
     st.caption(f"Items of the selection still visible on {last_day:%d.%m.%Y} with no Production / Market impact "
-               "communicated.")
+               "communicated. Risk = score of the tool (0-100): it ranks the items, it is not a probability. "
+               "Why = the 3 elements that raise the risk most. Copy = the material number, to paste into SAP.")
 
 
 _FILTERED = {}   # (filters, timeframe) -> filtered tracking table: the sections of one rerun share it

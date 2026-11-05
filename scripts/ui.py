@@ -112,6 +112,20 @@ section[data-testid="stSidebar"] [data-baseweb="select"] > div > div:first-child
   display: block; width: 100%; background: #fff; border: 1px solid #E1E5EB; border-radius: {RADIUS}; padding: 10px;
   box-shadow: 0 1px 2px rgba(0,0,0,.05); box-sizing: border-box;
 }}
+/* Table with a copy button on a column (copy_table) */
+.ion-table {{ max-height: 430px; overflow: auto; border: 1px solid #E5E7EB; border-radius: 6px; background: #fff; }}
+.ion-table table {{ border-collapse: collapse; width: 100%; font-size: .82rem; margin: 0; }}
+.ion-table th {{ position: sticky; top: 0; z-index: 1; background: #F7F8FA; color: #6B7280; font-weight: 500;
+  text-align: left; white-space: nowrap; padding: 7px 10px; border: 0; border-bottom: 1px solid #E5E7EB; }}
+.ion-table td {{ padding: 6px 10px; vertical-align: top; border: 0; border-bottom: 1px solid #F0F1F3; min-width: 90px; }}
+.ion-table td.wide {{ min-width: 300px; }}
+.ion-table td.nowrap {{ white-space: nowrap; }}
+.ion-table .bar {{ display: inline-block; width: 60px; height: 6px; margin-right: 6px; vertical-align: middle;
+  background: #E5E7EB; border-radius: 3px; overflow: hidden; }}
+.ion-table .bar i {{ display: block; height: 100%; background: {ION_BLUE}; }}
+.ion-copy {{ margin-left: 6px; padding: 1px 5px; border: 1px solid #D1D5DB; border-radius: 4px; cursor: pointer;
+  color: {ION_BLUE} !important; text-decoration: none; font-size: .72rem; }}
+.ion-copy:hover {{ background: #EAF1FE; }}
 .ion-chart .dl {{ text-align: right; font-size: .78rem; margin-top: 3px; }}
 .ion-chart .dl a, .ai-tools a {{ color: {ION_BLUE} !important; text-decoration: none; cursor: pointer; }}
 .ion-chart .dl a:hover, .ai-tools a:hover {{ text-decoration: underline; }}
@@ -377,6 +391,21 @@ SCROLL_SPY_JS = """
         const link = document.createElement("a");
         link.href = img.src; link.download = a.dataset.name + ".png";
         document.body.appendChild(link); link.click(); link.remove();
+      }, true);
+      // Copy button of a table cell (copy_table), e.g. a material number to paste into SAP
+      document.addEventListener("click", async e => {
+        const a = e.target.closest("a.ion-copy");
+        if (!a) return;
+        e.preventDefault();
+        try {
+          await navigator.clipboard.writeText(a.dataset.copy);
+        } catch (err) {   // no clipboard API here: copy through a hidden field
+          const field = document.createElement("textarea");
+          field.value = a.dataset.copy; document.body.appendChild(field); field.select();
+          document.execCommand("copy"); field.remove();
+        }
+        a.textContent = "✓ Copied";
+        setTimeout(() => { a.textContent = "Copy"; }, 1200);
       }, true);
       // Smart Analysis: copy (formatted, for Word / e-mail, and plain text) or download
       document.addEventListener("click", async e => {
@@ -956,6 +985,26 @@ def table_toolbar(key, columns, default=None, **state_keys):
     _, right = st.columns([6, 1])
     with right:
         return column_picker(key, columns, default, **state_keys)
+
+
+def copy_table(frame, copy_column, bar_column=None, wide=(), nowrap=()):
+    """A table in HTML (st.dataframe cannot hold a button): each cell of copy_column has a 'Copy' button that puts
+    its value in the clipboard, in the browser (no rerun). bar_column = a 0-100 score drawn as a bar; wide = long
+    texts, wrapped in a wider column; nowrap = columns on one line."""
+    def cell(column, value):
+        text = "" if pd.isna(value) else html.escape(" ".join(str(value).split()))
+        css = "wide" if column in wide else "nowrap" if column in (*nowrap, copy_column, bar_column) else ""
+        if column == bar_column and text:
+            text = f'<span class="bar"><i style="width:{float(value):.0f}%"></i></span>{float(value):.0f}%'
+        elif column == copy_column and text:
+            text += f'<a class="ion-copy" href="#" data-copy="{text}">Copy</a>'
+        return f'<td class="{css}">{text}</td>'
+
+    head = "".join(f"<th>{html.escape(c)}</th>" for c in frame.columns)
+    rows = "".join("<tr>" + "".join(cell(c, v) for c, v in zip(frame.columns, row)) + "</tr>"
+                   for row in frame.itertuples(index=False))
+    st.markdown(f'<div class="ion-table"><table><thead><tr>{head}</tr></thead><tbody>{rows}</tbody></table></div>',
+                unsafe_allow_html=True)
 
 
 def picked_table(key, frame, hidden=(), **dataframe_kwargs):
