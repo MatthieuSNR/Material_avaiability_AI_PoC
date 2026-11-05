@@ -121,7 +121,7 @@ Every file is described in [docs/project_structure.md](docs/project_structure.md
 
 4. **Put the dashboard online** (Streamlit Community Cloud: fixed link, this Mac can be off; Marco agreed to host the data there):
    - The data goes to GitHub **encrypted only**: `deploy/data.enc` (built by `python scripts/data_bundle.py`, which creates `DATA_KEY` in `.env` the first time). After a new run of the pipeline: rebuild it, commit and push `deploy/data.enc`; the app restarts by itself.
-   - Once, on [share.streamlit.io](https://share.streamlit.io) (sign in with GitHub): *Create app* → repository `MatthieuSNR/Roche_AI_PoC`, branch `main`, main file `scripts/app.py`; *Advanced settings* → the secrets `APP_PASSWORD`, `DATA_KEY` (the complete value from `.env`) and, for the cloud AI summary, `MISTRAL_API_KEY`.
+   - Once, on [share.streamlit.io](https://share.streamlit.io) (sign in with GitHub): *Create app* → repository `MatthieuSNR/Material_avaiability_AI_PoC`, branch `main`, main file `scripts/app.py`; *Advanced settings* → the secrets `APP_PASSWORD`, `DATA_KEY` (the complete value from `.env`) and, for the cloud AI summary, `MISTRAL_API_KEY`.
    - Send the testers the `….streamlit.app` link and the password. A new password in the secrets applies within a minute.
    - The Cloud installs `scripts/requirements.txt` (dashboard only, CPU PyTorch), not the root file. Without `APP_PASSWORD` the deployed app refuses to open.
 
