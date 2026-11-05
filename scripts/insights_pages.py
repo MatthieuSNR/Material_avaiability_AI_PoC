@@ -16,6 +16,7 @@ statistics are in folded panels "for analysts", with pages (tabs) when they are 
 """
 
 import os
+from functools import partial
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -145,11 +146,6 @@ def explain(text):
     ui.explain_box(_explain_section, text)
 
 
-def explain_html(text):
-    """explain() as HTML, to put in a pane."""
-    return ui.explain_html(_explain_section, text)
-
-
 def details(title="Statistical details (for analysts)"):
     return st.expander(title, expanded=False)
 
@@ -184,34 +180,28 @@ def _groups(entries, threshold, method):
     return ins.group_comments(entries, threshold, method, embeddings)
 
 
-def _stacked_bars(shares, counts, colors, title, xlabel, notes=None):
-    """Horizontal 100% bars: one row per category, one coloured segment per column; counts written in segments."""
-    # thin rows: the title, the legend (above) and the axis (below) fit on one screen
-    fig, ax = plt.subplots(figsize=(12, 0.25 * len(shares) + 1.5))
-    left = np.zeros(len(shares))
-    labels = [c if len(c) <= 42 else c[:41] + "…" for c in shares.index]
-    for column in shares.columns:
-        values = shares[column].to_numpy()
-        ax.barh(labels, values, left=left, color=colors[column], label=column, edgecolor="white", linewidth=0.8)
-        for i, (v, n) in enumerate(zip(values, counts[column].to_numpy())):
-            if v >= 7:
-                dark = colors[column] in ("#F5C518",)
-                ax.text(left[i] + v / 2, i, f"{v:.0f}%", ha="center", va="center", fontsize=7.5,
-                        color="black" if dark else "white")
-        left += values
-    if notes is not None:
-        for i, note in enumerate(notes):
-            ax.text(101.5, i, note, va="center", fontsize=7.5, color="#374151")
-    ax.set_xlim(0, 100)
-    ax.invert_yaxis()
-    ax.set_xlabel(xlabel)
-    ax.set_title(title, pad=24)
-    ax.legend(ncol=len(shares.columns), loc="lower center", bbox_to_anchor=(0.5, 1.0), frameon=False, fontsize=8,
-              borderaxespad=0.3)   # above the bars: never on the axis, whatever the number of rows
-    ax.tick_params(axis="y", labelsize=8)
-    ax.spines[["top", "right", "bottom"]].set_visible(False)
-    fig.tight_layout()
-    return fig
+def _stacked_rows(shares, counts, colors):
+    """The segments of the 100% bars, for ui.clickable_stacked: one row per bar and part, with their position."""
+    rows = []
+    for cause in shares.index:
+        start = 0.0
+        for part in shares.columns:
+            share = float(shares.at[cause, part])
+            rows.append({"Cause": cause, "Part": part, "Share": round(share, 1), "Items": int(counts.at[cause, part]),
+                         "Start": start, "End": start + share, "Mid": start + share / 2,
+                         "Label": f"{share:.0f}%" if share >= 7 else "",
+                         "Ink": "black" if colors[part] == "#F5C518" else "white"})
+            start += share
+    return pd.DataFrame(rows)
+
+
+def _pick_segment(chart_key, cause_filter, part_filter):
+    """A click on a segment of a bar: the sidebar filters take its root cause (or stakeholder) and its part. It runs
+    before the next rerun, when the filters may still be set."""
+    points = st.session_state[chart_key]["selection"].get("pick") or []
+    if points:
+        st.session_state[cause_filter] = [points[0]["Cause"]]
+        st.session_state[part_filter] = [points[0]["Part"]]
 
 
 # ------------------------------------------------------------------ main page: most frequent comments
@@ -432,35 +422,49 @@ def page_cause_impact(tracking, selection_name):
         lines.append(f"No {by.lower()} differs clearly from the {base:.0f}% of the selection (the differences may be "
                      "chance).")
 
-    # --- one chart at a time: impact (default) or worst material status, chosen in a two-part switch
+    # --- one chart at a time: impact (default) or material status, chosen in a two-part switch
     charted = shown if len(shown) <= max_bars else pd.concat([shown.head(max_bars // 2), shown.tail(max_bars // 2)])
     order = charted["Root cause"].tolist()
-    impact_label, status_label = f"Impact communicated per {by.lower()}", f"Worst material status per {by.lower()}"
+    impact_label = f"Impact communicated per {by.lower()}"
+    status_label = f"Material status communicated per {by.lower()}"
+    cause_filter = "f_root_cause" if by == "Root cause" else "f_stakeholder"
     if len(charted) < len(shown):
         st.caption(f"The chart shows the {max_bars // 2} {by.lower()}s that most often and the {max_bars // 2} that "
                    f"least often lead to a severe impact, out of {len(shown)}; the statistical details list them all "
                    "(Options: more bars).")
-    # both charts are in the page (pictures kept for the same data); the switch shows one of them in the browser
-    ui.client_switch("impact-chart", [impact_label, status_label])
+    # both charts are in the page; the switch shows one of them in the browser
+    ui.client_switch("impact_chart", [impact_label, status_label])
     counts = table.loc[order, list(IMPACT_COLORS)]
     shares = counts.div(counts.sum(axis=1), axis=0) * 100
-    notes = [f"{n} items{' ★' if p < SIGNIFICANT else ''}" for n, p in zip(counts.sum(axis=1), charted["p-value"])]
-    ui.pane("impact-chart", 0,
-            ui.chart_html(_stacked_bars, shares, counts, IMPACT_COLORS, f"{impact_label} (sorted by share of "
-                          "Production + Market)", "% of the items with a communicated impact", notes)
-            + ui.findings_html(lines)
-            + explain_html("Each bar = 100% of the items of a root cause whose impact was communicated. **Dark red "
-                           "and red** = severe impacts (Market, Production); **green** = no impact.\n\n"
-                           "The root causes at the **top** most often lead to a severe impact. **★** = the difference "
-                           f"with the {base:.0f}% of the whole selection is unlikely to be chance."))
+    notes = pd.DataFrame({"Cause": order, "Note": [f"{n} items{' ★' if p < SIGNIFICANT else ''}" for n, p in
+                                                   zip(counts.sum(axis=1), charted["p-value"])]})
+    chart_id = hash((by, selection_name, tuple(order), tuple(counts.to_numpy().ravel())))
+    with ui.pane("impact_chart", 0):
+        key = f"impact_{chart_id}"
+        ui.clickable_stacked(_stacked_rows(shares, counts, IMPACT_COLORS), notes, order, IMPACT_COLORS,
+                             f"{impact_label} (sorted by share of Production + Market)",
+                             "% of the items with a communicated impact", key,
+                             partial(_pick_segment, key, cause_filter, "f_impact"))
+        st.caption(f"Click a segment to filter the dashboard on this {by.lower()} and this impact.")
+        insights_box(lines)
+        explain("Each bar = 100% of the items of a root cause whose impact was communicated. **Dark red "
+                "and red** = severe impacts (Market, Production); **green** = no impact.\n\n"
+                "The root causes at the **top** most often lead to a severe impact. **★** = the difference "
+                f"with the {base:.0f}% of the whole selection is unlikely to be chance.")
     status = ins.root_cause_status(data).reindex(order).fillna(0)
     status_shares = status.div(status.sum(axis=1).replace(0, np.nan), axis=0).fillna(0) * 100
-    ui.pane("impact-chart", 1,
-            ui.chart_html(_stacked_bars, status_shares, status, ui.STATUS_COLORS, status_label,
-                          "% of the items with this root cause", [f"{int(n)} items" for n in status.sum(axis=1)])
-            + explain_html("For the same root causes, in the same order: the **worst material status** each item "
-                           "reached while the root cause was entered (ION colours: red = Actual Stock Out, orange = "
-                           "Potential, yellow = Below Safety, green = Good)."))
+    status_notes = pd.DataFrame({"Cause": order, "Note": [f"{int(n)} items" for n in status.sum(axis=1)]})
+    with ui.pane("impact_chart", 1):
+        key = f"status_{chart_id}"
+        ui.clickable_stacked(_stacked_rows(status_shares, status, ui.STATUS_COLORS), status_notes, order,
+                             {c: ui.STATUS_COLORS[c] for c in status.columns}, status_label,
+                             "% of the items with this root cause", key,
+                             partial(_pick_segment, key, cause_filter, "f_status"))
+        st.caption(f"Click a segment to filter the dashboard on this {by.lower()} and on the materials in this status "
+                   "today. The bars count the worst status over the timeframe: the filter can show fewer items.")
+        explain("For the same root causes, in the same order: the **worst material status** each item "
+                "reached while the root cause was entered (ION colours: red = Actual Stock Out, orange = "
+                "Potential, yellow = Below Safety, green = Good).")
 
     with details():
         # the table of every root cause, with the statistics (for analysts)

@@ -518,21 +518,13 @@ def explain_html(section_id, text):
     return f'<div class="ion-explain" data-section="{section_id}">{_markdown_html(text)}</div>'
 
 
-def findings_html(lines):
-    """The green box of the main findings (markdown lines), as HTML."""
-    if not lines:
-        return ""
-    paragraphs = "\n\n".join(lines)
-    return f'<div class="ion-findings">{_markdown_html(paragraphs)}</div>'
-
-
 def client_switch(group, options):
     """A bar split in equal parts over the full width, one per option; the chosen one in blue. It only shows one
-    of the panes (pane(group, i, html)) and hides the others, in the browser: no rerun of the dashboard."""
+    of the panes (with pane(group, i): ...) and hides the others, in the browser: no rerun of the dashboard."""
     def show(option, visible, on=""):
-        """CSS showing (or hiding) the pane(s) `option` (None = all) of the group; on = condition on the page."""
-        o = "" if option is None else f'[data-option="{option}"]'
-        return f'{on} .ion-pane[data-group="{group}"]{o} {{ display: {"block" if visible else "none"}; }}'
+        """CSS showing (or hiding) the pane `option` (None = all) of the group; on = condition on the page."""
+        pane_class = f'[class*="st-key-pane_{group}_"]' if option is None else f".st-key-pane_{group}_{option}"
+        return f'{on} {pane_class} {{ display: {"flex" if visible else "none"}; }}'
 
     rules = [show(i, False) for i in range(1, len(options))]          # by default: the first option
     for i in range(1, len(options)):
@@ -545,10 +537,9 @@ def client_switch(group, options):
                 unsafe_allow_html=True)
 
 
-def pane(group, index, content_html):
-    """One pane of client_switch: shown when its option is chosen."""
-    st.markdown(f'<div class="ion-pane" data-group="{group}" data-option="{index}">{content_html}</div>',
-                unsafe_allow_html=True)
+def pane(group, index):
+    """One pane of client_switch, a container shown when its option is chosen."""
+    return st.container(key=f"pane_{group}_{index}")
 
 
 _PNG_CACHE = {}          # fingerprint of a chart -> (png, name); shared by all users, the oldest dropped
@@ -636,6 +627,27 @@ def clickable_bars(data, title, height, key, on_pick):
     chart = alt.layer(bars, labels).properties(title=_card_title(title), height=height, background="white", padding=CHART_PADDING)
     st.altair_chart(chart.configure_view(stroke=None), width="stretch", theme=None, key=key,
                     on_select=on_pick, selection_mode="pick")
+
+
+def clickable_stacked(data, notes, order, colors, title, xlabel, key, on_pick):
+    """Horizontal 100% bars as a white card, clickable like clickable_bars. data: one row per bar and part (columns
+    Cause, Part, Share, Items, Mid, Label, Ink); notes: one row per bar (Cause, Note), on the right of the bar."""
+    axis_y = alt.Y("Cause:N", sort=order, title=None, axis=alt.Axis(labelLimit=260, labelFontSize=11, ticks=False))
+    domain = alt.Scale(domain=[0, 114])   # room for the notes on the right of the bars
+    pick = alt.selection_point(name="pick", fields=["Cause", "Part"], on="click")
+    parts = alt.Chart(data).mark_bar(stroke="white", cursor="pointer").encode(
+        y=axis_y, x=alt.X("Start:Q", scale=domain, title=xlabel, axis=alt.Axis(values=list(range(0, 101, 20)), grid=False)),
+        x2="End:Q", color=alt.Color("Part:N", sort=list(colors), scale=alt.Scale(domain=list(colors), range=list(colors.values())),
+                                    legend=alt.Legend(orient="top", title=None, labelFontSize=11)),
+        tooltip=["Cause", "Part", "Items", alt.Tooltip("Share:Q", title="% of the bar")]).add_params(pick)
+    labels = alt.Chart(data).mark_text(fontSize=10).encode(y=axis_y, x=alt.X("Mid:Q", scale=domain),
+                                                           text="Label:N", color=alt.Color("Ink:N", scale=None))
+    side = alt.Chart(notes).mark_text(align="left", dx=4, fontSize=10, color="#374151").encode(
+        y=axis_y, x=alt.datum(100, scale=domain), text="Note:N")
+    chart = alt.layer(parts, labels, side).properties(title=_card_title(title), height=24 * len(order) + 40,
+                                                      background="white", padding=CHART_PADDING)
+    st.altair_chart(chart.configure_view(stroke=None), width="stretch", theme=None, key=key, on_select=on_pick,
+                    selection_mode="pick")
 
 
 def clickable_pie(data, title, height, key, on_pick):

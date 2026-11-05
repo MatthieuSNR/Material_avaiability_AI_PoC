@@ -253,7 +253,7 @@ DeepL is a **cloud service**: only the comment text is sent (no vendor, material
 
 ### **Key Features Used in the Project**
 - **Bar Charts**: Top root causes with count and share of the selection; weak signals against the rate of all items (colour = how many times more often, solid / light = significant or not).
-- **100% stacked bars**: impact communicated and worst material status per root cause (ION colours, legend above the bars).
+- **100% stacked bars**: impact communicated and material status per root cause (ION colours, legend above the bars), drawn with Altair: a click on a segment sets the sidebar filters.
 - **Pie Charts**: Root cause share.
 - **Line Charts**: Items per root cause (or stakeholder) and week.
 - **Heatmaps** (seaborn, notebook only): Root causes per vendor.
@@ -290,7 +290,7 @@ DeepL is a **cloud service**: only the comment text is sent (no vendor, material
 - **▥ Columns panel** on the large tables: `st.popover` (opens in the browser, floats over the table) with a checkbox per column and **drag and drop** of the order with [streamlit-sortables](https://github.com/ohtaman/streamlit-sortables) (without the package the panel still works, without drag and drop).
 - **One scrolling page** with six sections (Overview, Most Frequent Comments, Root Cause Trends, Impact by Root Cause, Watchlist, Smart Analysis with its key statistics) and a menu that stays at the top. The menu is HTML; a small script installed with `st.iframe` highlights the section on screen and brings a section's title just under the menu.
 - **Options** of a section: `st.popover` on the right of its blue title (settings, *Show explanations* and, on Most Frequent Comments and the Watchlist, the **▥ Columns** of the table beside them). The CSS of *Show explanations* is in the section title, not in the panel: Streamlit takes a closed panel out of the page.
-- **Clickable charts**: the Top Root Causes are drawn with Altair (`st.altair_chart(on_select=...)`, Streamlit 1.35+): a click sets the Root Cause filter of the sidebar. The other charts stay matplotlib pictures. Moved from Streamlit 1.32 to the version of Streamlit Community Cloud on 05.11, so that the Mac and the deployed app run the same; the page styles (`scripts/ui.py`) target its HTML.
+- **Clickable charts**: the Top Root Causes and the bars of Impact by Root Cause are drawn with Altair (`st.altair_chart(on_select=...)`, Streamlit 1.35+): a click sets the filters of the sidebar. The other charts stay matplotlib pictures. Moved from Streamlit 1.32 to the version of Streamlit Community Cloud on 05.11, so that the Mac and the deployed app run the same; the page styles (`scripts/ui.py`) target its HTML.
 - **Work in the browser, without a rerun**: Streamlit reruns the whole script at every click. The actions that change nothing in the data are therefore done in the browser by CSS and a little JavaScript (`scripts/ui.py`): *Show explanations*, the switch between the two charts of *Impact by Root Cause*, the PNG export, the copy and download of the Smart Analysis.
 - **Caching**: `st.cache_data` (comments file, analyses), `st.cache_resource` (tracking table shared without copy, language model), plus the charts kept per data (section 7).
 - **DataFrames**: `st.dataframe` with column help (**?**) and, for comparisons, a pandas Styler (coloured cells).
