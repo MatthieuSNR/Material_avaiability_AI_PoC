@@ -23,7 +23,6 @@ import numpy as np
 import pandas as pd
 import altair as alt
 import streamlit as st
-import streamlit.components.v1 as components
 
 ROCHE_BLUE = "#0B41CD"
 ION_BLUE = "#1A73E8"
@@ -191,7 +190,7 @@ div[data-testid="stVerticalBlock"] > div:has(.ion-nav) {{ position: sticky; top:
 .emo {{ margin-right: 6px; }}
 .ion-anchor {{ scroll-margin-top: {BAR_HEIGHT + 70}px; height: 0; }}
 /* the invisible scroll-spy iframe takes no space */
-div[data-testid="stElementContainer"]:has( iframe[height="0"]) {{ display: none; }}
+div[data-testid="stElementContainer"][height="1px"]:has(> iframe) {{ position: absolute; height: 0; overflow: hidden; }}
 
 .ion-panel {{
   background: {ION_BLUE}; color: #fff; font-weight: 600; padding: 7px 14px; border-radius: {RADIUS};
@@ -449,8 +448,7 @@ SCROLL_SPY_JS = """
 
 def scroll_spy():
     """Invisible helper: colours in blue the menu entry of the section on screen."""
-    components.html(SCROLL_SPY_JS.replace("__OFFSET__", str(BAR_HEIGHT + 90)).replace("__BAR__", str(BAR_HEIGHT)),
-                    height=0)
+    st.iframe(SCROLL_SPY_JS.replace("__OFFSET__", str(BAR_HEIGHT + 90)).replace("__BAR__", str(BAR_HEIGHT)), height=1)
 
 
 def section(anchor_id, title, options=False):
@@ -620,7 +618,7 @@ def clickable_bars(data, title, height, key, on_pick):
                                                   tooltip=["Cause", "Materials"]).add_params(pick)
     labels = base.mark_text(align="left", dx=4, fontSize=11, color="#374151").encode(text="Label:N")
     chart = alt.layer(bars, labels).properties(title=_card_title(title), height=height, background="white", padding=CHART_PADDING)
-    st.altair_chart(chart.configure_view(stroke=None), use_container_width=True, theme=None, key=key,
+    st.altair_chart(chart.configure_view(stroke=None), width="stretch", theme=None, key=key,
                     on_select=on_pick, selection_mode="pick")
 
 
@@ -636,7 +634,7 @@ def clickable_pie(data, title, height, key, on_pick):
         tooltip=["Cause", "Materials", "Share"]).add_params(pick)
     shares = base.mark_text(radius=70, fontSize=10, color="#1F2937").encode(text="Share:N")
     chart = alt.layer(slices, shares).properties(title=_card_title(title, 12), height=height, background="white", padding=CHART_PADDING)
-    st.altair_chart(chart.configure_view(stroke=None), use_container_width=True, theme=None, key=key,
+    st.altair_chart(chart.configure_view(stroke=None), width="stretch", theme=None, key=key,
                     on_select=on_pick, selection_mode="pick")
 
 
@@ -849,7 +847,7 @@ def ai_loading_screen(steps, total, sub, comments, step_ms=900, height=380):
     stays active until the caller replaces the screen (e.g. when the LLM has answered)."""
     data = {"steps": steps, "total": int(total), "sub": sub, "comments": comments, "stepMs": step_ms}
     payload = json.dumps(data).replace("</", "<\\/")
-    components.html(LOADING_HTML.replace("__DATA__", payload), height=height)
+    st.iframe(LOADING_HTML.replace("__DATA__", payload), height=height)
 
 
 SECTION_NAMES = {"key findings", "what drives the issues", "early warnings", "risks to escalate",
@@ -1012,6 +1010,6 @@ def picked_table(key, frame, hidden=(), **dataframe_kwargs):
     reordered (hidden = columns not shown at first). The choice is kept for the session."""
     columns = list(frame.columns)
     shown = table_toolbar(key, columns, [c for c in columns if c not in hidden])
-    dataframe_kwargs.setdefault("use_container_width", True)
+    dataframe_kwargs.setdefault("width", "stretch")
     dataframe_kwargs.setdefault("hide_index", True)
     st.dataframe(frame[shown], **dataframe_kwargs)

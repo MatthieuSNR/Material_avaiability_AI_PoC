@@ -419,7 +419,7 @@ def unmerged_comments():
             table_df[date_col] = pd.to_datetime(table_df[date_col], errors="coerce").dt.strftime("%Y-%m-%d")
     st.dataframe(
         table_df,
-        use_container_width=True,
+        width="stretch",
         height=500,
         column_config={
             "Comment (EN)": st.column_config.TextColumn(width="large"),
@@ -534,7 +534,7 @@ with tab2:
             compare_df["Difference (pts)"] = compare_df.iloc[:, 1] - compare_df.iloc[:, 2]
             st.markdown("**Compared with all materials**")
             st.dataframe(ui.compare_colours(compare_df, compare_df.columns[1], "% of all materials", decimals=2),
-                         use_container_width=True, hide_index=True,
+                         width="stretch", hide_index=True,
                          column_config={compare_df.columns[1]: st.column_config.NumberColumn(
                              help=ui.COMPARE_HELP.replace("comments", "materials"))})
             st.caption(ui.COMPARE_LEGEND.replace("'% of selection'", "the selection").replace("comments", "materials"))
@@ -605,7 +605,7 @@ with tab6:
             "% of selection": list(stats["top_root_causes_pct"].values()),
             "% of all comments": list(stats["top_root_causes_pct_all"].values()),
         })
-        st.dataframe(ui.compare_colours(cause_df, "% of selection", "% of all comments"), use_container_width=True,
+        st.dataframe(ui.compare_colours(cause_df, "% of selection", "% of all comments"), width="stretch",
                      hide_index=True, column_config={"% of selection": st.column_config.NumberColumn(
                          format="%.1f", help=ui.COMPARE_HELP)})
         st.caption(ui.COMPARE_LEGEND)
@@ -618,7 +618,7 @@ with tab6:
                 st.markdown(f"**Top {label}s (share of the comments)**")
                 st.dataframe(pd.DataFrame([{label: k, "Comments": v["comments"], "%": v["pct"]}
                                            for k, v in stats[key].items()]),
-                             use_container_width=True, hide_index=True)
+                             width="stretch", hide_index=True)
 
         # --- Rising vs falling causes, and impact: one line each (the material status is in the Overview) ---
         col_a, col_b = st.columns(2)

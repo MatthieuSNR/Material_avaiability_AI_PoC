@@ -243,7 +243,7 @@ def frequent_comments_section(filtered_df, selection_name, unmerged_table):
             "Comment": "Comment (EN, most frequent wording)", "Variants": "Wordings grouped",
             "Days_visible": "Days visible (total)", "Main_root_cause": "Main root cause",
             "Root_causes": "Root causes (entries)"}),
-        use_container_width=True, hide_index=True,
+        width="stretch", hide_index=True,
         column_config={
             "Comment (EN, most frequent wording)": st.column_config.TextColumn(width="large"),
             "Occurrences": st.column_config.NumberColumn(help="Number of entries of this issue."),
@@ -258,7 +258,7 @@ def frequent_comments_section(filtered_df, selection_name, unmerged_table):
         group_id = table.loc[table["Comment"] == choice, "Group"].iloc[0]
         st.dataframe(variants[variants["Group"] == group_id][["Wording", "Occurrences", "Main_root_cause", "Reason"]]
                      .rename(columns={"Main_root_cause": "Main root cause"}),
-                     use_container_width=True, hide_index=True,
+                     width="stretch", hide_index=True,
                      column_config={"Wording": st.column_config.TextColumn(width="large"),
                                     "Reason": st.column_config.TextColumn(width="large")})
         st.markdown("**How the grouping works**")
@@ -324,7 +324,7 @@ def page_trends(tracking, selection_name):
                                    "Peak": weekly[shown].max(), "Peak week": weekly[shown].idxmax().dt.strftime("%d.%m")})
             change["Change"] = change.iloc[:, 1] - change.iloc[:, 0]
             st.dataframe(change.reset_index().rename(columns={"index": by, "Root_Cause": by, "Stakeholder": by}),
-                         use_container_width=True, hide_index=True,
+                         width="stretch", hide_index=True,
                          column_config={"Change": st.column_config.NumberColumn(
                              help="Items in the last week minus items in the first week of the timeframe.")})
 
@@ -352,7 +352,7 @@ def _status_change(tracking):
     summary, entered, n_a, n_b = ins.status_change(tracking, ends[week_a], ends[week_b], tuple(statuses))
     st.metric(f"Items in {' / '.join(statuses)}", f"{n_a} → {n_b}", delta=f"{n_b - n_a:+d}", delta_color="inverse",
               help="Number of items in the status on the last snapshot of each week, and the difference.")
-    st.dataframe(ui.signed_colours(summary, "Net change"), use_container_width=True, hide_index=True, column_config={
+    st.dataframe(ui.signed_colours(summary, "Net change"), width="stretch", hide_index=True, column_config={
         "Entered": st.column_config.NumberColumn(help="Items in the status in the second week but not in the first."),
         "Left": st.column_config.NumberColumn(help="Items in the status in the first week but no longer in the second."),
         "Net change": st.column_config.NumberColumn(
@@ -365,7 +365,7 @@ def _status_change(tracking):
         ui.picked_table("t_entered", shown[["Root_Cause", "Comment_EN", "VENDOR_NAME", "MRP_CONTROLLER", "MATERIAL_LABEL"]]
                      .rename(columns={"Root_Cause": "Root cause", "Comment_EN": "Comment (EN)", "VENDOR_NAME": "Vendor",
                                       "MRP_CONTROLLER": "MRP Controller", "MATERIAL_LABEL": "Material"}),
-                     use_container_width=True, hide_index=True,
+                     width="stretch", hide_index=True,
                      column_config={"Comment (EN)": st.column_config.TextColumn(width="large")})
 
 
@@ -453,7 +453,7 @@ def page_cause_impact(tracking, selection_name):
                      .rename(columns={"Root cause": by, "Lift": LIFT})
                      [[by, "Stakeholder", "Items", "Impact communicated", "Severe (Prod.+Market)", "% severe", LIFT,
                        "Significant", "p-value"]].drop(columns=["Stakeholder"] if by == "Stakeholder" else []),
-                     use_container_width=True, hide_index=True, column_config={
+                     width="stretch", hide_index=True, column_config={
                          "Items": st.column_config.NumberColumn(help="Items with this root cause in the timeframe."),
                          "Impact communicated": st.column_config.NumberColumn(help=HELP["communicated"]),
                          "% severe": st.column_config.NumberColumn(help=HELP["severe"]),
@@ -642,7 +642,7 @@ def _watchlist_details(items, model):
                          .rename(columns={"× average": LIFT})
                          [["Phrase", "Items", "Impact later", "% impact later", LIFT, "Significant", "Main root cause",
                            "Main vendors", "Example", "p-value"]],
-                         use_container_width=True, hide_index=True, column_config={
+                         width="stretch", hide_index=True, column_config={
                              "Items": st.column_config.NumberColumn(help="Items whose first comment contains the phrase."),
                              "Impact later": st.column_config.NumberColumn(help="Of these, items with a Production / Market "
                                                                                 "impact communicated later."),
@@ -668,7 +668,7 @@ def _watchlist_details(items, model):
                          (top["p-value"] < SIGNIFICANT).tolist())
                 st.dataframe(frame.rename(columns={column: names[column], "× average": LIFT}).assign(
                     Significant=lambda d: np.where(d["p-value"] < SIGNIFICANT, "Yes", "No")),
-                    use_container_width=True, hide_index=True, column_config={
+                    width="stretch", hide_index=True, column_config={
                         "% impact later": st.column_config.NumberColumn(help=HELP["impact_later"]),
                         LIFT: st.column_config.NumberColumn(help=HELP["lift"]),
                         "Significant": st.column_config.TextColumn(help=HELP["significant"]),
@@ -682,7 +682,7 @@ def _watchlist_details(items, model):
             st.markdown("Positive = raises the risk, negative = lowers it. Learned on the whole history.")
             st.dataframe(pd.concat([weights.head(15).assign(Effect="raises the risk"),
                                     weights.tail(10).iloc[::-1].assign(Effect="lowers the risk")]),
-                         use_container_width=True, hide_index=True)
+                         width="stretch", hide_index=True)
 
     # --- the prediction tool: how it works, then how well it does
     with tab_tool:
@@ -703,7 +703,7 @@ def _watchlist_details(items, model):
             "**ROC AUC**: the chance that an item with an impact is ranked above one without; 0.5 = chance, 1 = perfect.\n\n"
             "Method after Usuga-Cadavid et al. (classic text model, MCC for imbalanced classes, contributions of "
             "the words to explain the predictions).")
-        st.dataframe(scores, use_container_width=True, hide_index=True, column_config={
+        st.dataframe(scores, width="stretch", hide_index=True, column_config={
             "MCC": st.column_config.NumberColumn(help="0 = chance, 1 = perfect."),
             "ROC AUC": st.column_config.NumberColumn(help="0.5 = chance, 1 = perfect.")})
 
