@@ -111,6 +111,19 @@ def filter_tracking(tracking, selections, period=None):
 _explain_section = ""
 
 
+def options_with_columns(anchor_id, title):
+    """options() for a section with a table: settings on the left of the panel (returned first), the '▥ Columns' of
+    the table beside them."""
+    panel = ui.section_with_options(anchor_id, title)
+    global _explain_section
+    _explain_section = anchor_id
+    with panel:
+        left, right = st.columns([1, 1.7], gap="large")
+    with left:
+        ui.explain_switch(anchor_id)
+    return left, right
+
+
 def options(anchor_id, title):
     """Blue header of a section with a small 'Options' button on its right; the button opens the settings of
     the section and its 'Show explanations' switch (off by default). Returns the panel so that the section adds
@@ -201,9 +214,8 @@ def _stacked_bars(shares, counts, colors, title, xlabel, notes=None):
 # ------------------------------------------------------------------ main page: most frequent comments
 def frequent_comments_section(filtered_df, selection_name, unmerged_table):
     """unmerged_table() draws the comments one by one (option 'Unmerged comments')."""
-    with options("frequent-comments", "Most Frequent Comments — " + selection_name):
-        c1, c2, c3 = st.columns([0.8, 1.4, 1.4])
-    method_label = c2.selectbox("Group comments with a similar:",
+    settings, columns_panel = options_with_columns("frequent-comments", "Most Frequent Comments — " + selection_name)
+    method_label = settings.selectbox("Group comments with a similar:",
                                 ["Wording (characters)", "Meaning (language model)", UNMERGED],
                                 key="lab_method",
                                 help="Wording: same words, typos, plural forms. Meaning: a small language model "
@@ -211,10 +223,10 @@ def frequent_comments_section(filtered_df, selection_name, unmerged_table):
                                      "'No stockout detected' / 'No stockout apparent'. Unmerged comments: every "
                                      "comment on its own line, nothing grouped.")
     if method_label == UNMERGED:
-        return unmerged_table()
-    top_n = int(c1.selectbox("Select a view:", ["Top 10", "Top 20", "Top 50"], key="lab_top").split()[1])
+        return unmerged_table(columns_panel)
+    top_n = int(settings.selectbox("Select a view:", ["Top 10", "Top 20", "Top 50"], key="lab_top").split()[1])
     method = "meaning" if method_label.startswith("Meaning") else "chars"
-    threshold = c3.slider("How similar to be grouped:", 0.40, 0.95, ins.METHODS[method], 0.05, key=f"lab_threshold_{method}",
+    threshold = settings.slider("How similar to be grouped:", 0.40, 0.95, ins.METHODS[method], 0.05, key=f"lab_threshold_{method}",
                           help="Higher = stricter (fewer, more certain groups). Lower = more comments grouped. "
                                "Comments with different root causes are never grouped, except when only the case "
                                "or the punctuation differs.")
@@ -238,7 +250,7 @@ def frequent_comments_section(filtered_df, selection_name, unmerged_table):
 
     table = groups.head(top_n).copy()
     table.insert(3, "% of entries", (table["Occurrences"] / len(entries) * 100).round(1))
-    ui.picked_table("t_grouped", 
+    ui.picked_table("t_grouped", panel=columns_panel, frame=
         table.drop(columns=["Group", "Spellings"]).rename(columns={
             "Comment": "Comment (EN, most frequent wording)", "Variants": "Wordings grouped",
             "Days_visible": "Days visible (total)", "Main_root_cause": "Main root cause",
@@ -559,7 +571,7 @@ def page_watchlist(tracking, tracking_filtered, comments_en, selection_name, per
     if tracking is None:
         ui.section("watchlist", "Watchlist — " + selection_name)
         return _missing_tracking()
-    options("watchlist", "Watchlist — " + selection_name)
+    _, columns_panel = options_with_columns("watchlist", "Watchlist — " + selection_name)
     all_items, model = weak_signals(tracking, comments_en)
     in_scope = set(map(tuple, tracking_filtered[ins.ITEM].drop_duplicates().to_numpy()))
     items = all_items[[(m, v) in in_scope for m, v in zip(all_items["MATERIAL_NUMBER"], all_items["VENDOR_ACCOUNT_NUMBER"])]]
@@ -569,7 +581,7 @@ def page_watchlist(tracking, tracking_filtered, comments_en, selection_name, per
     if items.empty:
         st.info("No item with a comment for the current filters and timeframe.")
         return
-    _watch_list(items, tracking, model)
+    _watch_list(items, tracking, model, columns_panel)
     with details():
         _watchlist_details(items, model)
 
@@ -740,7 +752,7 @@ def _model_chart(scores, all_base):
     return fig
 
 
-def _watch_list(items, tracking, model):
+def _watch_list(items, tracking, model, columns_panel):
     """Open items of the selection, ranked by the risk the tool gives them, with the reasons."""
     explain("Items **still visible on the last snapshot**, with no Production / Market impact communicated yet, ranked "
             "by their risk. The risk comes from a prediction tool (see the statistical details below): it compares the item's first comment and context with "
@@ -761,8 +773,8 @@ def _watch_list(items, tracking, model):
                    "Days since first comment", "MRP_CONTROLLER"]].rename(columns={
         "Risk": "Risk score", "MATERIAL_DESC": "Material", "Text": "First comment (EN)", "Root_Cause": "Root cause", "VENDOR_NAME": "Vendor",
         "Status_now": "Status now", "MRP_CONTROLLER": "MRP Controller"})
-    # '▥ Columns' as on the other tables; the table is in HTML for the Copy button of the material number
-    shown = ui.table_toolbar("t_watchlist", list(table.columns), list(table.columns))
+    # In HTML for the Copy button of the material number
+    shown = ui.table_toolbar("t_watchlist", list(table.columns), list(table.columns), panel=columns_panel)
     ui.copy_table(table[shown], "Material number", bar_column="Risk score", wide=("Why", "First comment (EN)"),
                   nowrap=("Material", "Status now", "MRP Controller"))
     st.caption(f"Items of the selection still visible on {last_day:%d.%m.%Y} with no Production / Market impact "

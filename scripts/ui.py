@@ -226,6 +226,9 @@ div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .
   [data-testid="stPopover"] button p {{ font-size: .8rem; color: #fff; }}
 div[data-baseweb="popover"]:has(.section-options) {{ z-index: 1000005 !important; }}
 div[data-testid="stPopoverBody"]:has(.section-options) {{ width: 640px; max-width: 92vw; }}
+div[data-testid="stPopoverBody"]:has(.section-options):has(.col-picker) {{
+  width: 860px !important; margin-top: 0 !important; max-height: 70vh !important;
+}}
 .section-options {{ display: none; }}
 
 .ion-tiles {{ display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 4px 0 6px 0; }}
@@ -456,8 +459,13 @@ def section(anchor_id, title, options=False):
     """Start of a page section: anchor for the menu + blue header. options=True: draws in the current container
     a small 'Options' button on the right of the header and returns its panel (see section_with_options)."""
     extra = " has-options" if options else ""
+    # The rules of 'Show explanations' live here, not in the Options panel: the panel leaves the page when it closes
+    rules = (f'<style>body.explain-{anchor_id} .ion-explain[data-section="{anchor_id}"] {{ display: block; }}'
+             f'body.explain-{anchor_id} .explain-switch[data-section="{anchor_id}"] .knob {{ background: {ION_BLUE}; }}'
+             f'body.explain-{anchor_id} .explain-switch[data-section="{anchor_id}"] .knob::after {{ left: 16px; }}</style>'
+             if options else "")
     st.markdown(
-        f'<div class="ion-section{extra}"><div id="{anchor_id}" class="ion-anchor"></div>'
+        f'{rules}<div class="ion-section{extra}"><div id="{anchor_id}" class="ion-anchor"></div>'
         f'<div class="ion-panel">{_label(title)}</div></div>',
         unsafe_allow_html=True,
     )
@@ -477,12 +485,8 @@ def section_with_options(anchor_id, title):
 def explain_switch(section_id):
     """'Show explanations' switch of a section. It works in the browser (a class on the page, set by the
     script of scroll_spy): showing the explanations does not rerun the dashboard."""
-    st.markdown(
-        f'<style>body.explain-{section_id} .ion-explain[data-section="{section_id}"] {{ display: block; }}'
-        f'body.explain-{section_id} .explain-switch[data-section="{section_id}"] .knob {{ background: {ION_BLUE}; }}'
-        f'body.explain-{section_id} .explain-switch[data-section="{section_id}"] .knob::after {{ left: 16px; }}</style>'
-        f'<span class="explain-switch" data-section="{section_id}"><span class="knob"></span>Show explanations</span>',
-        unsafe_allow_html=True)
+    st.markdown(f'<span class="explain-switch" data-section="{section_id}"><span class="knob"></span>Show explanations</span>',
+                unsafe_allow_html=True)
 
 
 def _markdown_html(text):
@@ -943,10 +947,11 @@ div[data-testid="stPopoverBody"]:has(.col-picker) [data-testid="stCheckbox"] { m
 """
 
 
-def column_picker(key, columns, default=None, order_key=None, visible_key=None, checkbox_prefix=None):
+def column_picker(key, columns, default=None, order_key=None, visible_key=None, checkbox_prefix=None, panel=None):
     """Panel '▥ Columns' for one table. columns = all displayed names, in their default order; default = the
     columns shown at first (all if None). Returns the columns to show, in the chosen order. The state lives in
-    st.session_state (order_key, visible_key), so it survives reruns and can be saved in a view."""
+    st.session_state (order_key, visible_key), so it survives reruns and can be saved in a view.
+    panel = a place in the Options of the section; without it, a '▥ Columns' button of its own."""
     try:
         from streamlit_sortables import sort_items
     except ImportError:   # app started outside the project environment (venv): no drag and drop, the rest works
@@ -970,9 +975,11 @@ def column_picker(key, columns, default=None, order_key=None, visible_key=None, 
         elif name in visible:
             visible.remove(name)
 
-    st.markdown(COLUMN_PICKER_CSS, unsafe_allow_html=True)
-    with st.popover("▥ Columns"):
+    (st if panel is None else panel).markdown(COLUMN_PICKER_CSS, unsafe_allow_html=True)
+    with st.popover("▥ Columns") if panel is None else panel:
         st.markdown('<div class="col-picker"></div>', unsafe_allow_html=True)
+        if panel is not None:
+            st.markdown("**Columns**")
         c_check, c_order = st.columns(2)
         c_check.caption("Show / hide")
         for name in order:
@@ -992,8 +999,11 @@ def column_picker(key, columns, default=None, order_key=None, visible_key=None, 
     return result or list(columns[:1])
 
 
-def table_toolbar(key, columns, default=None, **state_keys):
-    """Right-aligned '▥ Columns' button above a table; returns the columns to show."""
+def table_toolbar(key, columns, default=None, panel=None, **state_keys):
+    """The columns to show of a table: chosen in `panel` (the Options of the section) or, without it, with a
+    right-aligned '▥ Columns' button above the table."""
+    if panel is not None:
+        return column_picker(key, columns, default, panel=panel, **state_keys)
     _, right = st.columns([6, 1])
     with right:
         return column_picker(key, columns, default, **state_keys)
@@ -1020,11 +1030,11 @@ def copy_table(frame, copy_column, bar_column=None, wide=(), nowrap=()):
                 unsafe_allow_html=True)
 
 
-def picked_table(key, frame, hidden=(), **dataframe_kwargs):
+def picked_table(key, frame, hidden=(), panel=None, **dataframe_kwargs):
     """st.dataframe with a '▥ Columns' panel above it: every column of `frame` can be shown, hidden and
-    reordered (hidden = columns not shown at first). The choice is kept for the session."""
+    reordered (hidden = columns not shown at first; panel: see table_toolbar). The choice is kept for the session."""
     columns = list(frame.columns)
-    shown = table_toolbar(key, columns, [c for c in columns if c not in hidden])
+    shown = table_toolbar(key, columns, [c for c in columns if c not in hidden], panel=panel)
     dataframe_kwargs.setdefault("width", "stretch")
     dataframe_kwargs.setdefault("hide_index", True)
     st.dataframe(frame[shown], **dataframe_kwargs)

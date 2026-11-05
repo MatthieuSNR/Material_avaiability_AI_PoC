@@ -402,10 +402,10 @@ tab2, tab3, tab5, tab_impact, tab_signals, tab7 = [st.container() for _ in range
 
 # ================= Comments one by one (option "Unmerged comments" of Most Frequent Comments) =================
 
-def unmerged_comments():
-    # "▥ Columns" (right): a panel floating over the table, under its header row (ui.column_picker).
+def unmerged_comments(columns_panel):
+    # "▥ Columns": in the Options of the section (ui.column_picker).
     # Same state as before (col_order / col_visible), so the saved views keep their columns.
-    shown = ui.table_toolbar("col", list(TABLE_COLUMNS.values()), DEFAULT_COLUMNS, order_key="col_order",
+    shown = ui.table_toolbar("col", list(TABLE_COLUMNS.values()), DEFAULT_COLUMNS, panel=columns_panel, order_key="col_order",
                              visible_key="col_visible", checkbox_prefix="cb_") or DEFAULT_COLUMNS
     to_data = {v: k for k, v in TABLE_COLUMNS.items()}
     table_df = filtered_df.sort_values("Last_Seen", ascending=False)[[to_data[c] for c in shown]] \
