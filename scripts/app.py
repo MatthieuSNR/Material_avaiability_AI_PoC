@@ -143,7 +143,7 @@ ui.scroll_spy()  # menu entry of the section on screen in blue
 # Stored on this Mac (data/interim, not pushed to GitHub), so every user of the shared app sees them.
 VIEWS_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                           "data", "interim", "saved_views.json")
-FILTER_KEYS = ["f_mrp", "f_pgroup", "f_vendor", "f_material", "f_stakeholder", "f_root_cause", "f_impact"]
+FILTER_KEYS = ["f_mrp", "f_pgroup", "f_vendor", "f_material", "f_stakeholder", "f_root_cause", "f_impact", "f_status"]
 TABLE_COLUMNS = {  # data column -> displayed name, in the default order of the comments table
     "Comment_EN": "Comment (EN)", "Comment": "Original comment", "First_Seen": "First seen",
     "Last_Seen": "Last seen", "Days_Active": "Days visible", "STOCKOUT_DATE": "Stockout Date",
@@ -281,6 +281,8 @@ selected_material_label = multi_filter(filters_box, "Material", "MATERIAL_LABEL"
 selected_stakeholder = multi_filter(filters_box, "Stakeholder", "Stakeholder", "f_stakeholder")   # prefix of the root cause
 selected_root_cause = multi_filter(filters_box, "Root Cause", "Root_Cause", "f_root_cause")
 selected_impact = multi_filter(filters_box, "Impact", "Impact_Level", "f_impact", order=impact_order)
+selected_status = filters_box.multiselect("Material Status (today)", ui.STATUS_ORDER, key="f_status", placeholder="All",
+                                          help="The materials in this status on the last snapshot, with their history.")
 
 
 # --- Timeframe filter (Part A: record the user's choice only) ---
@@ -354,14 +356,28 @@ selection_parts = [p for p in [selection_label(selected_mrp), selection_label(se
                                selection_label(selected_vendor_label, short=True),
                                selection_label(selected_material_label, short=True),
                                selection_label(selected_stakeholder), selection_label(selected_root_cause),
-                               selection_label(selected_impact)] if p]
+                               selection_label(selected_impact), selection_label(selected_status)] if p]
 selection_name = " / ".join(selection_parts) if selection_parts else "All comments"
 
 # The sidebar filters, as the Insights Lab and the Smart Analysis read them
 LAB_SELECTIONS = {"MRP_CONTROLLER": selected_mrp, "PURCHASING_GROUP": selected_pgroup,
                   "VENDOR_LABEL": selected_vendor_label, "MATERIAL_LABEL": selected_material_label,
                   "Stakeholder": selected_stakeholder, "Root_Cause": selected_root_cause,
-                  "Impact_Level": selected_impact}
+                  "Impact_Level": selected_impact, "Material_Status": selected_status}
+
+# Material Status filter: the materials in this status TODAY (worst status of their lines on the last snapshot, as in the
+# tiles), in every section. The tiles keep the counts of all the statuses, so that another one can be chosen.
+if current_all is None:
+    st.warning("Last snapshot not built yet: run `python scripts/tracking.py`.")
+    st.stop()
+current_df = insights_pages.filter_tracking(current_all, LAB_SELECTIONS)
+statuses = material_status(current_df).replace("Unknown Status (Good Part)", "Good Part")
+tile_counts, tile_total = statuses.value_counts().to_dict(), len(statuses)
+if selected_status:
+    statuses = statuses[statuses.isin(selected_status)]
+    LAB_SELECTIONS["MATERIAL_NUMBER"] = statuses.index.tolist() or [-1]   # -1: no material
+    current_df = current_df[current_df["MATERIAL_NUMBER"].isin(statuses.index)]
+    filtered_df = filtered_df[filtered_df["MATERIAL_NUMBER"].isin(statuses.index)]
 
 # Compute all statistics ONCE (used by all sections and the AI Summary)
 stats = compute_stats(filtered_df, df)
@@ -371,11 +387,6 @@ stats = compute_stats(filtered_df, df)
 # impact. The timeframe does not apply here; the other sections use the whole history.
 overview_name = " / ".join(selection_parts) if selection_parts else "All materials"
 ui.section("overview", "Overview — " + overview_name)
-if current_all is None:
-    st.warning("Last snapshot not built yet: run `python scripts/tracking.py`.")
-    st.stop()
-current_df = insights_pages.filter_tracking(current_all, LAB_SELECTIONS)
-statuses = material_status(current_df)
 n_materials, n_all_materials = len(statuses), current_all["MATERIAL_NUMBER"].nunique()
 last_snapshot = current_all["Snapshot_Date"].max()
 
@@ -389,9 +400,17 @@ st.markdown(
 
 # --- Material status tiles (ION colour code) ---
 ui.panel_header("Material status today")
-ui.status_tiles(statuses.value_counts().to_dict(), n_materials)
-st.caption("A material counts once, whatever its number of purchase orders and lines, with the worst status of its "
-           "lines. The timeframe does not change the Overview; the other sections use the history.")
+
+
+def pick_status(status):
+    """A click on a tile: the dashboard focuses on this status; a second click removes the filter."""
+    st.session_state["f_status"] = [] if st.session_state.get("f_status") == [status] else [status]
+
+
+ui.status_tiles(tile_counts, tile_total, selected_status, pick_status)
+st.caption("Click a tile to focus the whole dashboard on the materials in this status today; click it again to remove "
+           "the filter. A material counts once, whatever its number of purchase orders and lines, with the worst "
+           "status of its lines. The timeframe does not change the Overview; the other sections use the history.")
 ui.status_definitions()
 
 # --- Sections: all analyses follow each other on one page (menu at the top to jump) ---

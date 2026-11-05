@@ -112,7 +112,7 @@ section[data-testid="stSidebar"] [data-baseweb="select"] > div > div:first-child
   box-shadow: 0 1px 2px rgba(0,0,0,.05); box-sizing: border-box;
 }}
 /* Table with a copy button on a column (copy_table) */
-.ion-table {{ max-height: 430px; overflow: auto; border: 1px solid #E5E7EB; border-radius: {RADIUS}; background: #fff; }}
+.ion-table {{ max-height: max(430px, calc(100vh - 200px)); overflow: auto; border: 1px solid #E5E7EB; border-radius: {RADIUS}; background: #fff; }}
 .ion-table table {{ border-collapse: collapse; width: 100%; font-size: .82rem; margin: 0; }}
 .ion-table th {{ position: sticky; top: 0; z-index: 1; background: #F7F8FA; color: #6B7280; font-weight: 500;
   text-align: left; white-space: nowrap; padding: 7px 10px; border: 0; border-bottom: 1px solid #E5E7EB; }}
@@ -183,7 +183,8 @@ div[data-testid="stVerticalBlock"] > div:has(.ion-nav) {{ position: sticky; top:
 }}
 .ion-nav a {{
   color: #1F2937 !important; text-decoration: none !important; font-size: .84rem; padding: 6px 8px;
-  border-radius: {RADIUS}; white-space: nowrap; flex: 1 1 auto; text-align: center;   /* full width of the menu */
+  border-radius: {RADIUS} !important;   /* !important: Streamlit rounds a link that has the focus (after a click) */
+  white-space: nowrap; flex: 1 1 auto; text-align: center;   /* full width of the menu */
 }}
 .ion-nav a:hover {{ background: #E8F0FE; }}
 .ion-nav a.active {{ background: {ION_BLUE}; color: #fff !important; }}
@@ -244,7 +245,17 @@ div[data-testid="stPopoverBody"]:has(.section-options):has(.col-picker) {{
   opacity: .35;
 }}
 .ion-tile.light {{ color: #3A3A3A; }}
-@media (max-width: 900px) {{ .ion-tiles {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }} }}
+/* A click on a tile (status_tiles): an invisible button over the tile; the other tiles fade when one is chosen */
+[class*="st-key-status_tile_"] {{ position: relative; gap: 0; }}
+[class*="st-key-status_tile_"] [data-testid="stElementContainer"]:has(.stButton) {{
+  position: absolute; inset: 0; width: 100% !important; height: 100%; z-index: 2;
+}}
+[class*="st-key-status_tile_"] .stButton, [class*="st-key-status_tile_"] .stButton button {{
+  width: 100%; height: 100%; opacity: 0; cursor: pointer;
+}}
+[class*="st-key-status_tile_"]:hover .ion-tile {{ filter: brightness(1.06); }}
+.ion-tile.faded {{ opacity: .4; }}
+.ion-tile.chosen {{ box-shadow: 0 0 0 3px {ION_BLUE}; }}
 
 .ai-result {{
   background: #fff; border-left: 4px solid {ROCHE_BLUE}; border-radius: {RADIUS}; padding: 16px 20px;
@@ -657,22 +668,23 @@ def panel_header(title):
     st.markdown(f'<div class="ion-panel">{html.escape(title)}</div>', unsafe_allow_html=True)
 
 
-def status_tiles(status_counts: dict, total: int, unit="materials"):
-    """The four ION material status tiles, counting the materials of the selection."""
-    tiles = []
-    for status in STATUS_ORDER:
+def status_tiles(status_counts: dict, total: int, chosen=(), on_click=None, unit="materials"):
+    """The four ION material status tiles, counting the materials of the selection. chosen = the statuses of the
+    filter (the other tiles fade); on_click(status) runs when a tile is clicked."""
+    for i, (column, status) in enumerate(zip(st.columns(len(STATUS_ORDER), gap="small"), STATUS_ORDER)):
         count = int(status_counts.get(status, 0))
         if status == "Good Part":  # ION shows "Unknown Status (Good Part)" with the good parts
             count += int(status_counts.get("Unknown Status (Good Part)", 0))
         pct = count / total * 100 if total else 0
         light = " light" if status == "Below Safety" else ""
-        tiles.append(
-            f'<div class="ion-tile{light}" style="background:{STATUS_COLORS[status]}">'
-            f'<div class="num">{count}</div><div class="lbl">{status}</div>'
-            f'<div class="pct">{pct:.1f}% of the {unit}</div>'
-            f'<div class="icon">{STATUS_ICONS[status]}</div></div>'
-        )
-    st.markdown(f'<div class="ion-tiles">{"".join(tiles)}</div>', unsafe_allow_html=True)
+        state = " chosen" if status in chosen else " faded" if chosen else ""
+        with column.container(key=f"status_tile_{i}"):
+            st.markdown(
+                f'<div class="ion-tile{light}{state}" style="background:{STATUS_COLORS[status]}">'
+                f'<div class="num">{count}</div><div class="lbl">{status}</div>'
+                f'<div class="pct">{pct:.1f}% of the {unit}</div>'
+                f'<div class="icon">{STATUS_ICONS[status]}</div></div>', unsafe_allow_html=True)
+            st.button(status, key=f"status_button_{i}", on_click=on_click, args=(status,))
 
 
 # Heat map of a share compared with its reference (e.g. % of the selection vs % of all comments)

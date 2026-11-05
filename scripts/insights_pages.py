@@ -84,7 +84,8 @@ def label_key(label):
 def filter_tracking(tracking, selections, period=None):
     """The sidebar filters and the timeframe, on the tracking table (one row per day and item):
     * MRP controller, purchasing group, stakeholder, root cause: on the rows;
-    * vendor and material: on their number (the label of the filter ends with it);
+    * vendor and material: on their number (the label of the filter ends with it); MATERIAL_NUMBER: these numbers
+      (the materials of the Material Status filter);
     * impact: on the items whose impact over the timeframe is one of the selected levels; 'Not communicated'
       = items with no impact entered at all ('None (no impact)' = planning entered that there is none)."""
     if period:
@@ -99,6 +100,8 @@ def filter_tracking(tracking, selections, period=None):
     if selections.get("MATERIAL_LABEL"):
         keys = {label_key(v) for v in selections["MATERIAL_LABEL"]}
         tracking = tracking[tracking["MATERIAL_NUMBER"].astype("int64").astype(str).isin(keys)]
+    if selections.get("MATERIAL_NUMBER"):
+        tracking = tracking[tracking["MATERIAL_NUMBER"].isin(selections["MATERIAL_NUMBER"])]
     if selections.get("Impact_Level"):
         wanted = set(selections["Impact_Level"])
         levels = tracking.groupby(ins.ITEM)["Impact_Level"].agg(lambda s: set(s.dropna()))
@@ -823,7 +826,7 @@ def watchlist_section(df, selections, selection_name, period=None):
 # ------------------------------------------------------------------ context for the Smart Analysis (LLM)
 FILTER_NAMES = {"MRP_CONTROLLER": "MRP controller", "PURCHASING_GROUP": "purchasing group", "VENDOR_LABEL": "vendor",
                 "MATERIAL_LABEL": "material", "Stakeholder": "stakeholder", "Root_Cause": "root cause",
-                "Impact_Level": "impact"}
+                "Impact_Level": "impact", "Material_Status": "material status today"}
 
 
 def _short(text, n=160):
@@ -838,7 +841,7 @@ def smart_context(df, filtered_df, selections, period=None, timeframe=""):
     what changed in the last week and the root causes rising over the last 4 weeks.
     All figures are computed here; the model only interprets them."""
     facts = {"selection": {"filters": {FILTER_NAMES[k]: [v.split(" — ")[0] for v in vals]
-                                       for k, vals in selections.items() if vals},
+                                       for k, vals in selections.items() if vals and k in FILTER_NAMES},
                            "timeframe": timeframe or "all snapshots",
                            "comments": int(len(filtered_df)), "all_comments": int(len(df))}}
     filtered_on = set(facts["selection"]["filters"])
