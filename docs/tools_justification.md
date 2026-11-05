@@ -11,7 +11,7 @@ This document justifies the **selection of tools, libraries, and frameworks** us
 | 5 | langdetect 1.0.9, DeepL API (`deepl` 1.32.0) | pipeline steps 5 and 7 |
 | 6 | Mistral API, LM Studio, `openai` client 3.26.0 | Smart Analysis |
 | 7 | matplotlib 3.8.4, seaborn 0.13.2 | charts (seaborn: one notebook heatmap) |
-| 8 | Streamlit 1.32.0, streamlit-sortables 0.3.1 | dashboard |
+| 8 | Streamlit 1.66.1, Altair 5.5.0, streamlit-sortables 0.3.1 | dashboard |
 | 9 | `venv` | environment |
 | 10 | `.env` + python-dotenv 1.2.4 | keys and password |
 | 11 | project structure | — |
@@ -273,7 +273,7 @@ DeepL is a **cloud service**: only the comment text is sent (no vendor, material
 
 ---
 
-## **📌 8. Dashboard: Streamlit (v1.32.0)**
+## **📌 8. Dashboard: Streamlit (v1.66.1)**
 
 ### **Why Streamlit?**
  | **Criteria**          | **Justification**                                                                                                                                                                                                 |
@@ -287,10 +287,11 @@ DeepL is a **cloud service**: only the comment text is sent (no vendor, material
 ### **Key Features Used in the Project**
 - **Widgets**: Sidebar filters (MRP controller, purchasing group, vendor, material, root cause, impact, timeframe); every filter is a **multiselect** (empty = All), so a planner can view their own scope plus the colleagues they back up (user feedback, demo of 16 Oct.). The filters **cascade**: each one only offers the values that exist within the filters above it. They fold (`st.expander`) so that they fit on one screen.
 - **Saved views** (like SAP *personalised views*): filters, timeframe and table columns saved under a name and re-applied in one click (`data/interim/saved_views.json`, local).
-- **▥ Columns panel** on the large tables: `st.popover` (opens in the browser, floats over the table) with a checkbox per column and **drag and drop** of the order with [streamlit-sortables](https://github.com/ohtaman/streamlit-sortables) (Streamlit 1.32 has no built-in column menu; without the package the panel still works, without drag and drop).
-- **One scrolling page** with eight sections (Overview, Filtered Comments, Most Frequent Comments, Root Cause Trends, Key Statistics, Impact by Root Cause, Weak Signals, Smart Analysis) and a menu that stays at the top. The menu is HTML; a small script installed with `components.html` highlights the section on screen and brings a section's title just under the menu.
+- **▥ Columns panel** on the large tables: `st.popover` (opens in the browser, floats over the table) with a checkbox per column and **drag and drop** of the order with [streamlit-sortables](https://github.com/ohtaman/streamlit-sortables) (without the package the panel still works, without drag and drop).
+- **One scrolling page** with seven sections (Overview, Most Frequent Comments, Root Cause Trends, Key Statistics, Impact by Root Cause, Watchlist, Smart Analysis) and a menu that stays at the top. The menu is HTML; a small script installed with `components.html` highlights the section on screen and brings a section's title just under the menu.
 - **Options** of a section: `st.popover` on the right of its blue title (settings and *Show explanations*).
-- **Work in the browser, without a rerun**: Streamlit 1.32 reruns the whole script at every click and has no partial reruns (*fragments* came in later versions). The actions that change nothing in the data are therefore done in the browser by CSS and a little JavaScript (`scripts/ui.py`): *Show explanations*, the switches between sub-sections (*Impact by Root Cause*: two charts; *Weak Signals*: three sub-sections), the PNG export, the copy and download of the Smart Analysis.
+- **Clickable charts**: the Top Root Causes are drawn with Altair (`st.altair_chart(on_select=...)`, Streamlit 1.35+): a click sets the Root Cause filter of the sidebar. The other charts stay matplotlib pictures. Moved from Streamlit 1.32 to the version of Streamlit Community Cloud on 05.11, so that the Mac and the deployed app run the same; the page styles (`scripts/ui.py`) target its HTML.
+- **Work in the browser, without a rerun**: Streamlit reruns the whole script at every click. The actions that change nothing in the data are therefore done in the browser by CSS and a little JavaScript (`scripts/ui.py`): *Show explanations*, the switch between the two charts of *Impact by Root Cause*, the PNG export, the copy and download of the Smart Analysis.
 - **Caching**: `st.cache_data` (comments file, analyses), `st.cache_resource` (tracking table shared without copy, language model), plus the charts kept per data (section 7).
 - **DataFrames**: `st.dataframe` with column help (**?**) and, for comparisons, a pandas Styler (coloured cells).
 - **Theme + custom CSS** (`.streamlit/config.toml`, `scripts/ui.py`): a look close to the existing Roche **ION Material Availability** dashboard (Roche logo, blue bar and section titles, square corners, material status tiles), so planners recognise the tool. The logo is in `assets/roche_logo.png`.
@@ -300,7 +301,6 @@ DeepL is a **cloud service**: only the comment text is sent (no vendor, material
  |-----------------|-------------------------------------------------------------------------------------------------------|
  | Dash (Plotly)   | **More complex** to set up for simple dashboards.                                                     |
  | Flask/Django    | Requires **HTML/CSS/JavaScript knowledge** for frontend development.                                  |
-| Newer Streamlit (fragments, segmented control) | Would avoid part of the browser-side code, but the CSS of the dashboard relies on the page structure of 1.32; an upgrade is possible later, with a check of the layout. |
 
 ### **References**
 - [Streamlit Official Documentation](https://docs.streamlit.io/)
@@ -450,12 +450,12 @@ Each folder and file has a **clear purpose**, making the project **easy to maint
  | **No dependency on data or network** | The tests use a small synthetic table and a fake API client (`tests/test_cloud_summary.py`), so they run without Roche data, without a Mistral key and offline. |
  | **Simplicity**        | Plain functions with `assert`; `python -m pytest -q tests`. |
 
-### **What Is Tested** (64 tests)
+### **What Is Tested** (65 tests)
 - `tests/test_comment_cleaning.py` (23): journal entries and signatures (chains, typos, signature in a line, `n/a`), snapshot merge (partial week skipped), one row per comment without login, abbreviations by language and on the real library, a meaning that another row would expand again, entry-by-entry translation, `Comment_EN` taken from the cache when the cleaned file is saved (DeepL never called).
 - `tests/test_glossary.py` (10): validation of the glossary, whole-word case-sensitive matching, glossary created once and reused, fallback without glossary, forced terms (also at the start of a sentence), stale translations redone only on request.
 - `tests/test_pseudonymise.py` (7): identifying elements, quantities and prices are replaced and restored; the same value gets the same placeholder.
 - `tests/test_cloud_summary.py` (8): the request of the Smart Analysis contains no real supplier, MRP controller, purchasing group, material number or e-mail; aliases of the streamed answer are replaced by the real names; the filters are known and trivial statistics dropped; an invented alias becomes a neutral label; no asterisk in the rendered analysis.
-- `tests/test_insights.py` (16): grouping rules (case, containment, root cause, meaning, opposite meanings), journal entries, tracking table, status change, root cause × impact and status, stakeholders merged, weak signals (phrases, context, model), filters of the Lab, embedding cache, a chart drawn once for the same data.
+- `tests/test_insights.py` (17): grouping rules (case, containment, root cause, meaning, opposite meanings), journal entries, tracking table, status change, root cause × impact and status, stakeholders merged, weak signals (phrases, context, model), filters of the Lab, embedding cache, a chart drawn once for the same data.
 
 ### **Limits**
 The tests do not call the real DeepL or Mistral API and do not evaluate the quality of the translation or of the analysis; the detection limits of section 5 (abbreviated names, person names) are not covered. The look of the dashboard (CSS, browser-side switches) is checked by hand in a browser, not by tests.

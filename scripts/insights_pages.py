@@ -6,13 +6,13 @@ Sections of the dashboard (one page; the first two replaced the first versions o
   frequent-comments  Most frequent comments, near-identical wordings grouped (US24)
   trends             Root cause trends on all snapshot rows + what changed between two weeks (US26)
   cause-impact       Which root causes lead to which impact and material status
-  weak-signals       Which first comments (phrases, vendor, root cause, status) announce an impact to come
+  watchlist          Open items most at risk; under it, for analysts, what the ranking rests on: which first entries
+                     and contexts (vendor, root cause, status) announce an impact to come
 
 Written for planners, buyers and managers: plain-language insights and coloured charts first. The settings and
 the "Show explanations" switch are behind a small "Options" button on the right of each section title; Impact by
-Root Cause (two charts) and Weak Signals (phrases, context, watch list) show one part at a time, chosen in a switch
-that works in the browser; the mechanics and statistics are in folded panels "for analysts"; a "?" on every
-indicator. smart_context() gives the same findings to the Smart Analysis.
+Root Cause (two charts) shows one part at a time, chosen in a switch that works in the browser; the mechanics and
+statistics are in folded panels "for analysts", with pages (tabs) when they are many; a "?" on every indicator. smart_context() gives the same findings to the Smart Analysis.
 """
 
 import os
@@ -24,10 +24,12 @@ import streamlit as st
 
 import insights as ins
 import ui
-from tracking import TRACKING_PATH
+from tracking import CURRENT_PATH, TRACKING_PATH
 
 IMPACT_COLORS = {"Market": "#9B1C1C", "Production": "#E0443A", "Logistics": "#F5C518", "None (no impact)": "#2FA84F"}
 SIGNIFICANT = 0.05
+
+UNMERGED = "Unmerged comments"   # option of Most Frequent Comments: nothing grouped
 
 # Column "times the rate of the whole selection" (the reference of every comparison: all the items of the
 # selection, i.e. the sidebar filters and the timeframe)
@@ -47,42 +49,55 @@ HELP = {
 }
 
 
-@st.cache_resource   # one shared table, not copied at every use (read only: every step makes new frames)
-def load_tracking():
-    if not os.path.exists(TRACKING_PATH):
-        return None
-    t = pd.read_csv(TRACKING_PATH)
+def _with_labels(t):
+    """The columns of the sidebar filters, on the tracking table or the last snapshot."""
     t["Snapshot_Date"] = pd.to_datetime(t["Snapshot_Date"])
     t["MATERIAL_LABEL"] = t["MATERIAL_DESC"].fillna("No description") + " — " + t["MATERIAL_NUMBER"].astype("int64").astype(str)
     t["VENDOR_LABEL"] = (t["VENDOR_NAME"].fillna("Unknown vendor") + " — "
                          + t["VENDOR_ACCOUNT_NUMBER"].astype("Int64").astype(str).replace("<NA>", "no vendor"))
     t["MRP_CONTROLLER"] = t["MRP_CONTROLLER"].fillna("Unknown")
     t["PURCHASING_GROUP"] = t["PURCHASING_GROUP"].fillna("Unknown")
+    t["Stakeholder"] = t["Root_Cause"].map(ins.stakeholder).where(t["Root_Cause"].notna())
     return t
 
 
-def _label_key(label):
+@st.cache_resource   # one shared table, not copied at every use (read only: every step makes new frames)
+def load_tracking():
+    if not os.path.exists(TRACKING_PATH):
+        return None
+    return _with_labels(pd.read_csv(TRACKING_PATH))
+
+
+@st.cache_resource
+def load_current():
+    """All the order lines of the last snapshot (Overview); None when scripts/tracking.py has not built them."""
+    if not os.path.exists(CURRENT_PATH):
+        return None
+    return _with_labels(pd.read_csv(CURRENT_PATH))
+
+
+def label_key(label):
     """'Description — 1234567' -> '1234567' (the number after the last ' — ' of a filter label)."""
     return str(label).rsplit(" — ", 1)[-1]
 
 
 def filter_tracking(tracking, selections, period=None):
     """The sidebar filters and the timeframe, on the tracking table (one row per day and item):
-    * MRP controller, purchasing group, root cause: on the rows;
+    * MRP controller, purchasing group, stakeholder, root cause: on the rows;
     * vendor and material: on their number (the label of the filter ends with it);
     * impact: on the items whose impact over the timeframe is one of the selected levels; 'Not communicated'
       = items with no impact entered at all ('None (no impact)' = planning entered that there is none)."""
     if period:
         start, end = period
         tracking = tracking[(tracking["Snapshot_Date"] >= start) & (tracking["Snapshot_Date"] <= end)]
-    for column in ("MRP_CONTROLLER", "PURCHASING_GROUP", "Root_Cause"):
+    for column in ("MRP_CONTROLLER", "PURCHASING_GROUP", "Stakeholder", "Root_Cause"):
         if selections.get(column):
             tracking = tracking[tracking[column].isin(selections[column])]
     if selections.get("VENDOR_LABEL"):
-        keys = {_label_key(v) for v in selections["VENDOR_LABEL"]}
-        tracking = tracking[tracking["VENDOR_LABEL"].map(_label_key).isin(keys)]
+        keys = {label_key(v) for v in selections["VENDOR_LABEL"]}
+        tracking = tracking[tracking["VENDOR_LABEL"].map(label_key).isin(keys)]
     if selections.get("MATERIAL_LABEL"):
-        keys = {_label_key(v) for v in selections["MATERIAL_LABEL"]}
+        keys = {label_key(v) for v in selections["MATERIAL_LABEL"]}
         tracking = tracking[tracking["MATERIAL_NUMBER"].astype("int64").astype(str).isin(keys)]
     if selections.get("Impact_Level"):
         wanted = set(selections["Impact_Level"])
@@ -184,15 +199,20 @@ def _stacked_bars(shares, counts, colors, title, xlabel, notes=None):
 
 
 # ------------------------------------------------------------------ main page: most frequent comments
-def frequent_comments_section(filtered_df, selection_name):
+def frequent_comments_section(filtered_df, selection_name, unmerged_table):
+    """unmerged_table() draws the comments one by one (option 'Unmerged comments')."""
     with options("frequent-comments", "Most Frequent Comments — " + selection_name):
         c1, c2, c3 = st.columns([0.8, 1.4, 1.4])
-    top_n = int(c1.selectbox("Select a view:", ["Top 10", "Top 20", "Top 50"], key="lab_top").split()[1])
-    method_label = c2.selectbox("Group comments with a similar:", ["Wording (characters)", "Meaning (language model)"],
+    method_label = c2.selectbox("Group comments with a similar:",
+                                ["Wording (characters)", "Meaning (language model)", UNMERGED],
                                 key="lab_method",
                                 help="Wording: same words, typos, plural forms. Meaning: a small language model "
                                      "(run on this machine, no data leaves it) also groups paraphrases such as "
-                                     "'No stockout detected' / 'No stockout apparent'.")
+                                     "'No stockout detected' / 'No stockout apparent'. Unmerged comments: every "
+                                     "comment on its own line, nothing grouped.")
+    if method_label == UNMERGED:
+        return unmerged_table()
+    top_n = int(c1.selectbox("Select a view:", ["Top 10", "Top 20", "Top 50"], key="lab_top").split()[1])
     method = "meaning" if method_label.startswith("Meaning") else "chars"
     threshold = c3.slider("How similar to be grouped:", 0.40, 0.95, ins.METHODS[method], 0.05, key=f"lab_threshold_{method}",
                           help="Higher = stricter (fewer, more certain groups). Lower = more comments grouped. "
@@ -535,17 +555,11 @@ def _top_share(items, share=0.1):
     return n_top, top["Severe_later"].mean() * 100, found
 
 
-def page_weak_signals(tracking, tracking_filtered, comments_en, selection_name, period=None):
+def page_watchlist(tracking, tracking_filtered, comments_en, selection_name, period=None):
     if tracking is None:
-        ui.section("weak-signals", "Weak Signals — " + selection_name)
+        ui.section("watchlist", "Watchlist — " + selection_name)
         return _missing_tracking()
-    options("weak-signals", "Weak Signals — " + selection_name)
-    explain("**Can we see an impact coming?** For every item (a material from a vendor), we look at its **first "
-            "comment** and its context at that moment (vendor, root cause, material status), and check whether a "
-            "**Production or Market impact** was communicated **later**.\n\n"
-            "A weak signal = a phrase or a context after which such an impact comes more often than usual. "
-            "Everything on this page follows the sidebar filters and the timeframe (items first commented in it); "
-            "only the prediction tool is trained on the whole history, because it needs volume.")
+    options("watchlist", "Watchlist — " + selection_name)
     all_items, model = weak_signals(tracking, comments_en)
     in_scope = set(map(tuple, tracking_filtered[ins.ITEM].drop_duplicates().to_numpy()))
     items = all_items[[(m, v) in in_scope for m, v in zip(all_items["MATERIAL_NUMBER"], all_items["VENDOR_ACCOUNT_NUMBER"])]]
@@ -555,6 +569,19 @@ def page_weak_signals(tracking, tracking_filtered, comments_en, selection_name, 
     if items.empty:
         st.info("No item with a comment for the current filters and timeframe.")
         return
+    _watch_list(items, tracking, model)
+    with details():
+        _watchlist_details(items, model)
+
+
+def _watchlist_details(items, model):
+    """What the ranking of the watchlist rests on, for the analysts: one page (tab) per question."""
+    explain("**Can we see an impact coming?** For every item (a material from a vendor), we look at its **first "
+            "comment** and its context at that moment (vendor, root cause, material status), and check whether a "
+            "**Production or Market impact** was communicated **later**.\n\n"
+            "A weak signal = a phrase or a context after which such an impact comes more often than usual. "
+            "These pages follow the sidebar filters and the timeframe (items first commented in it); only the "
+            "prediction tool is trained on the whole history, because it needs volume.")
     severe = items[items["Severe_later"]]
     base = len(severe) / len(items) * 100
     enough = len(items) >= 30 and len(severe) >= 3
@@ -572,15 +599,13 @@ def page_weak_signals(tracking, tracking_filtered, comments_en, selection_name, 
     if not enough:
         st.warning(f"{len(items)} item{'s' if len(items) > 1 else ''} with a comment ({len(severe)} with an impact "
                    "later) in this selection: too few to find reliable signals (at least 30 items and 3 impacts are "
-                   "needed). Widen the filters or the timeframe. The watch list still works.")
-        _watch_list(items, tracking, model)
-        return
+                   "needed). Widen the filters or the timeframe. The watchlist still works.")
 
     # --- main findings
     lines = []
     if not phrases.empty:
         top = phrases.head(3)
-        lines.append("Phrases most often followed by an impact: " + "; ".join(
+        lines.append("First entries most often followed by an impact: " + "; ".join(
             f"**\"{r['Phrase']}\"** ({r['% impact later']:.0f}% of {r['Items']} items, {r['× average']:.1f} times "
             f"the {base:.0f}% of all items)"
             for _, r in top.iterrows()) + ".")
@@ -598,10 +623,9 @@ def page_weak_signals(tracking, tracking_filtered, comments_en, selection_name, 
                          f"later had an impact, against **{base:.0f}%** of all the items of the selection.")
     insights_box(lines)
 
-    # --- three sub-sections, one shown at a time (switch in the browser, no rerun)
-    ui.client_switch("weak-signals", ["Phrases in the first comment", "Context of the first comment",
-                                      "Watch list: open items at risk"])
-    with ui.pane_container("weak-signals", 0):
+    tab_entry, tab_context, tab_weights, tab_tool = st.tabs(["Comment in the first entry", "Context of the first comment",
+                                                             "Elements that weigh most", "How reliable is the tool"])
+    with tab_entry:
         explain("Phrases of 2 to 3 words (common words like 'the', 'for' are skipped, so `request pull-in` stands for "
                 "\"Request for pull-in\"). The **colour** says how many times more often an impact follows than for all "
                 "the items of the selection (green = less often, yellow, orange, **red** = more than 2.5×); **solid bars with ★** are "
@@ -612,7 +636,7 @@ def page_weak_signals(tracking, tracking_filtered, comments_en, selection_name, 
             st.info("No phrase is followed by an impact clearly more often than for all the items of the selection.")
         else:
             top = phrases.head(12)
-            ui.chart(_bar_vs_average, top, "Phrase", "% impact later", base, "Phrases of the first comment",
+            ui.chart(_bar_vs_average, top, "Phrase", "% impact later", base, "Comment in the first entry",
                      (top["p-value"] < SIGNIFICANT).tolist())
             ui.picked_table("t_phrases", phrases.assign(Significant=np.where(phrases["p-value"] < SIGNIFICANT, "Yes", "No"))
                          .rename(columns={"× average": LIFT})
@@ -628,7 +652,7 @@ def page_weak_signals(tracking, tracking_filtered, comments_en, selection_name, 
                              "Example": st.column_config.TextColumn(width="large", help="A first comment with this phrase."),
                              "p-value": st.column_config.NumberColumn(format="%.4f", help=HELP["p"])})
 
-    with ui.pane_container("weak-signals", 1):
+    with tab_context:
         explain("The same question for the context of the first comment: after which vendors, root causes and material "
                 "statuses does an impact come more often? Only values with at least 3 items are shown.")
         names = {"VENDOR_NAME": "Vendor", "Root_Cause": "Root cause", "MATERIAL_STATUS": "Material status"}
@@ -650,52 +674,55 @@ def page_weak_signals(tracking, tracking_filtered, comments_en, selection_name, 
                         "Significant": st.column_config.TextColumn(help=HELP["significant"]),
                         "p-value": st.column_config.NumberColumn(format="%.4f", help=HELP["p"])})
 
-    with ui.pane_container("weak-signals", 2):
-        _watch_list(items, tracking, model, header=False)
-
-    # --- prediction
-    # --- the prediction tool: for analysts, in the statistical details (how it works, then how well it does)
-    if model:
-        scores = model["scores"]
-        with details():
-            st.markdown(
-                f"**Model**: logistic regression, classes balanced, on {scores.attrs['n_items']} items "
-                f"({scores.attrs['n_severe']} with an impact later). Inputs: phrases of 2-3 words of the first comment "
-                "(TF-IDF), root cause, vendor and material status at the first comment.\n\n"
-                "**Honest evaluation**: 5-fold cross-validation. The items are split in 5 parts; each part is scored "
-                "by a model trained on the 4 others, so every item is scored by a model that never saw it.\n\n"
-                "**Top 10%**: the items are ranked by their risk; we look at the 10% at the top, as a planner would "
-                "check them first.\n\n"
-                "**MCC** (Matthews correlation coefficient): overall quality of the yes/no prediction, from -1 to 1; "
-                "0 = no better than chance; 0.2-0.3 = modest but real; it stays fair when impacts are rare. "
-                "**ROC AUC**: the chance that an item with an impact is ranked above one without; 0.5 = chance, 1 = perfect.\n\n"
-                "Method after Usuga-Cadavid et al. (classic text model, MCC for imbalanced classes, contributions of "
-                "the words to explain the predictions).")
-            st.dataframe(scores, use_container_width=True, hide_index=True, column_config={
-                "MCC": st.column_config.NumberColumn(help="0 = chance, 1 = perfect."),
-                "ROC AUC": st.column_config.NumberColumn(help="0.5 = chance, 1 = perfect.")})
+    with tab_weights:
+        if not model:
+            st.info("Not enough items in the history to train the tool.")
+        else:
             weights = model["weights"]
-            st.markdown("**Elements that weigh most** (positive = raises the risk, negative = lowers it)")
+            st.markdown("Positive = raises the risk, negative = lowers it. Learned on the whole history.")
             st.dataframe(pd.concat([weights.head(15).assign(Effect="raises the risk"),
                                     weights.tail(10).iloc[::-1].assign(Effect="lowers the risk")]),
                          use_container_width=True, hide_index=True)
 
-            st.markdown("**How well can the tool anticipate an impact?**")
-            n_top, hit, found = _top_share(items)
-            lines = [f"In this selection, if you check first the **{n_top} items** (10%) the tool ranks most at risk, "
-                     f"**{hit:.0f}%** of them later had a Production / Market impact, against **{base:.0f}%** of all "
-                     "items" + (f": **{hit / base:.1f}× better than checking at random**." if base else ".")]
-            if len(severe):
-                lines.append(f"These {n_top} items contain **{found:.0f}%** of the impacts that came later in the "
-                             "selection.")
-            lines.append("Over all items, using the comment and its context (vendor, root cause, status) works better "
-                         f"than the root cause alone: {scores.iloc[-1]['Impact rate in the top 10%']:.0f}% vs "
-                         f"{scores.iloc[0]['Impact rate in the top 10%']:.0f}% in the top 10% (chart below).")
-            insights_box(lines)
-            all_base = scores.attrs["n_severe"] / scores.attrs["n_items"] * 100
-            ui.chart(_model_chart, scores[["Model", "Impact rate in the top 10%"]], all_base, name="weak_signals_model")
-            explain("Each bar is a version of the tool, using different information. The further a bar goes beyond "
-                    "the dashed line (all items), the better that version spots the items that will get an impact.")
+    # --- the prediction tool: how it works, then how well it does
+    with tab_tool:
+        if not model:
+            st.info("Not enough items in the history to train the tool.")
+            return
+        scores = model["scores"]
+        st.markdown(
+            f"**Model**: logistic regression, classes balanced, on {scores.attrs['n_items']} items "
+            f"({scores.attrs['n_severe']} with an impact later). Inputs: phrases of 2-3 words of the first comment "
+            "(TF-IDF), root cause, vendor and material status at the first comment.\n\n"
+            "**Honest evaluation**: 5-fold cross-validation. The items are split in 5 parts; each part is scored "
+            "by a model trained on the 4 others, so every item is scored by a model that never saw it.\n\n"
+            "**Top 10%**: the items are ranked by their risk; we look at the 10% at the top, as a planner would "
+            "check them first.\n\n"
+            "**MCC** (Matthews correlation coefficient): overall quality of the yes/no prediction, from -1 to 1; "
+            "0 = no better than chance; 0.2-0.3 = modest but real; it stays fair when impacts are rare. "
+            "**ROC AUC**: the chance that an item with an impact is ranked above one without; 0.5 = chance, 1 = perfect.\n\n"
+            "Method after Usuga-Cadavid et al. (classic text model, MCC for imbalanced classes, contributions of "
+            "the words to explain the predictions).")
+        st.dataframe(scores, use_container_width=True, hide_index=True, column_config={
+            "MCC": st.column_config.NumberColumn(help="0 = chance, 1 = perfect."),
+            "ROC AUC": st.column_config.NumberColumn(help="0.5 = chance, 1 = perfect.")})
+
+        st.markdown("**How well can the tool anticipate an impact?**")
+        n_top, hit, found = _top_share(items)
+        lines = [f"In this selection, if you check first the **{n_top} items** (10%) the tool ranks most at risk, "
+                 f"**{hit:.0f}%** of them later had a Production / Market impact, against **{base:.0f}%** of all "
+                 "items" + (f": **{hit / base:.1f}× better than checking at random**." if base else ".")]
+        if len(severe):
+            lines.append(f"These {n_top} items contain **{found:.0f}%** of the impacts that came later in the "
+                         "selection.")
+        lines.append("Over all items, using the comment and its context (vendor, root cause, status) works better "
+                     f"than the root cause alone: {scores.iloc[-1]['Impact rate in the top 10%']:.0f}% vs "
+                     f"{scores.iloc[0]['Impact rate in the top 10%']:.0f}% in the top 10% (chart below).")
+        insights_box(lines)
+        all_base = scores.attrs["n_severe"] / scores.attrs["n_items"] * 100
+        ui.chart(_model_chart, scores[["Model", "Impact rate in the top 10%"]], all_base, name="weak_signals_model")
+        explain("Each bar is a version of the tool, using different information. The further a bar goes beyond "
+                "the dashed line (all items), the better that version spots the items that will get an impact.")
 
 
 def _model_chart(scores, all_base):
@@ -713,10 +740,8 @@ def _model_chart(scores, all_base):
     return fig
 
 
-def _watch_list(items, tracking, model, header=True):
+def _watch_list(items, tracking, model):
     """Open items of the selection, ranked by the risk the tool gives them, with the reasons."""
-    if header:
-        ui.panel_header("Watch list: open items that look like those that led to an impact")
     explain("Items **still visible on the last snapshot**, with no Production / Market impact communicated yet, ranked "
             "by their risk. The risk comes from a prediction tool (see the statistical details below): it compares the item's first comment and context with "
             "all the items of the past.\n\n"
@@ -777,14 +802,15 @@ def impact_section(df, selections, selection_name, period=None):
     page_cause_impact(_tracking(df, selections, period)[1], selection_name)
 
 
-def weak_signals_section(df, selections, selection_name, period=None):
+def watchlist_section(df, selections, selection_name, period=None):
     tracking, tracking_filtered = _tracking(df, selections, period)
-    page_weak_signals(tracking, tracking_filtered, st.session_state["_comments_en"], selection_name, period)
+    page_watchlist(tracking, tracking_filtered, st.session_state["_comments_en"], selection_name, period)
 
 
 # ------------------------------------------------------------------ context for the Smart Analysis (LLM)
 FILTER_NAMES = {"MRP_CONTROLLER": "MRP controller", "PURCHASING_GROUP": "purchasing group", "VENDOR_LABEL": "vendor",
-                "MATERIAL_LABEL": "material", "Root_Cause": "root cause", "Impact_Level": "impact"}
+                "MATERIAL_LABEL": "material", "Stakeholder": "stakeholder", "Root_Cause": "root cause",
+                "Impact_Level": "impact"}
 
 
 def _short(text, n=160):

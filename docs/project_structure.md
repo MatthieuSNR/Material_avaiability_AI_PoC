@@ -18,7 +18,8 @@ Roche_AI_PoC/
 │   │   ├── abbreviation_evidence.csv      # Real excerpts that justify the proposed meanings (read by --report)
 │   │   └── saved_views.json               # Saved views of the dashboard
 │   ├── cleaned_comments.csv       # One row per (material, vendor, comment): cleaned, expanded, translated
-│   └── item_tracking.csv          # One row per (day, material, vendor) from ALL snapshot rows
+│   ├── item_tracking.csv          # One row per (day, material, vendor) from ALL snapshot rows
+│   └── current_snapshot.csv       # All the order lines of the last snapshot day (Overview)
 │
 ├── lexicon/                       # Versioned reference tables, no real comment and no supplier name in them
 │   ├── abbreviations.csv          # Abbreviation library (DE / EN): meaning, context, expand flag, review status
@@ -34,7 +35,7 @@ Roche_AI_PoC/
 │   ├── translation.py             # Step 7: language per entry, pseudonymise, DeepL with cache and glossary -> Comment_EN
 │   ├── glossary.py                # DeepL glossary: --check, creation / reuse on DeepL, forced terms
 │   ├── pseudonymise.py            # Hides names, IDs, quantities and prices before DeepL or the Mistral API
-│   ├── tracking.py                # Builds data/item_tracking.csv from all snapshot rows (worst status, impact level)
+│   ├── tracking.py                # Builds data/item_tracking.csv (worst status, impact level) and current_snapshot.csv
 │   │   # --- Analyses
 │   ├── stats_engine.py            # Statistics of the dashboard and of the Smart Analysis (pandas only)
 │   ├── insights.py                # Grouping of similar comments, weekly trends, status change, root cause x impact,
@@ -56,7 +57,7 @@ Roche_AI_PoC/
 │   ├── translation.ipynb          # Step 7 (7.1-7.5)
 │   └── llm_summary.ipynb          # Statistics, prompt, pseudonymised prompt, cloud / local analysis (switches)
 │
-├── tests/                         # pytest, synthetic data only, no network (64 tests)
+├── tests/                         # pytest, synthetic data only, no network (65 tests)
 │   ├── test_comment_cleaning.py   # Journal entries, signatures, snapshot merge, abbreviations (library, expanded twice),
 │   │                              #   entry-by-entry translation, Comment_EN from the cache
 │   ├── test_glossary.py           # DeepL glossary: validation, hash, forced terms, refresh of stale translations
@@ -83,7 +84,7 @@ Roche_AI_PoC/
 - **Data flow, comments**: `Snapshot_2026/` → `data_cleaning.py` (steps 1-6, with `entries.py`, `abbreviations.py` + `lexicon/abbreviations.csv`) → `cleaned_comments.csv` → `translation.py` (step 7, with `pseudonymise.py`, `glossary.py` + `lexicon/glossary_de_en.csv`, the cache) → `Comment_EN`.
 - **Data flow, items**: `Snapshot_2026/` → `tracking.py` → `item_tracking.csv` → `insights.py` → `insights_pages.py`.
 - **Dashboard**: `app.py` reads both files, applies the sidebar filters, draws its own sections with `stats_engine.py` and `ui.py`, and the four analysis sections with `insights_pages.py`; the Smart Analysis (`llm_summary.py`) receives the statistics and the findings of these sections (`smart_context`).
-- **Sections of the page, in the menu order**: Overview (with Top Root Causes), Filtered Comments, Most Frequent Comments, Root Cause Trends, Key Statistics, Impact by Root Cause, Weak Signals, Smart Analysis (always last).
+- **Sections of the page, in the menu order**: Overview (with Top Root Causes; last snapshot only), Most Frequent Comments, Root Cause Trends, Key Statistics, Impact by Root Cause, Watchlist, Smart Analysis (always last).
 - **One function per cleaning step**, one notebook cell per step: the result of every step can be checked on its own. The notebooks call the functions of the scripts, they do not duplicate code.
 - **`stats_engine.py` and `insights.py` compute every figure**: the dashboard displays them and the LLM only receives them, so the LLM never computes anything.
 - **`lexicon/` vs `data/interim/`**: `lexicon/` holds the reference tables, versioned and free of real comments and supplier names (the GitHub repository is public); `data/interim/` holds files generated from the confidential data, never pushed.

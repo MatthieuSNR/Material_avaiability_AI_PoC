@@ -4,7 +4,8 @@
 # for which the older exact versions have no package.
 --extra-index-url https://download.pytorch.org/whl/cpu
 torch                  # CPU build (~200 MB instead of the GPU one, too large for the Cloud)
-streamlit>=1.32
+streamlit>=1.60           # clickable charts (on_select); the page styles target its HTML
+altair>=5
 streamlit-sortables>=0.3
 pandas>=2.2
 numpy>=1.26

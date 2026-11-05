@@ -4,7 +4,7 @@ Layout and components of the dashboard, close to the Roche ION Material Availabi
   screen, section title brought under the menu), blue section titles with an optional "Options" button,
   material status tiles, coloured comparisons (compare_colours);
 * in the browser, without a rerun of Streamlit 1.32: "Show explanations" (explain_switch), switches between
-  parts of a section (client_switch + pane / pane_container), PNG export of the charts, copy / download of
+  parts of a section (client_switch + pane), PNG export of the charts, copy / download of
   the Smart Analysis;
 * charts (chart): a matplotlib figure drawn once for the same data, shown as a PNG card;
 * tables: column picker (show / hide, drag and drop with streamlit-sortables);
@@ -21,6 +21,7 @@ import re
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import altair as alt
 import streamlit as st
 import streamlit.components.v1 as components
 
@@ -92,7 +93,6 @@ section[data-testid="stSidebar"] [data-baseweb="tag"] span[title] {{
 }}
 section[data-testid="stSidebar"] [data-baseweb="select"] > div > div:first-child {{ min-width: 0; }}
 
-div[data-testid="element-container"]:has(> div .ion-pane-mark) {{ display: none; }}
 /* Switch in the browser (client_switch): one bar split in equal parts, the first option chosen by default */
 .ion-seg {{ display: flex; width: 100%; border: 1px solid {ION_BLUE}; border-radius: {RADIUS}; overflow: hidden;
   margin: 2px 0 10px 0; }}
@@ -177,7 +177,7 @@ div[data-testid="stVerticalBlock"] > div:has(.ion-nav) {{ position: sticky; top:
 .emo {{ margin-right: 6px; }}
 .ion-anchor {{ scroll-margin-top: {BAR_HEIGHT + 70}px; height: 0; }}
 /* the invisible scroll-spy iframe takes no space */
-div[data-testid="element-container"]:has( iframe[height="0"]) {{ display: none; }}
+div[data-testid="stElementContainer"]:has( iframe[height="0"]) {{ display: none; }}
 
 .ion-panel {{
   background: {ION_BLUE}; color: #fff; font-weight: 600; padding: 7px 14px; border-radius: {RADIUS};
@@ -196,20 +196,20 @@ div[data-testid="element-container"]:has( iframe[height="0"]) {{ display: none; 
 .ion-section {{ margin-top: 26px; }}
 .ion-section .ion-panel {{ font-size: 1.05rem; padding: 9px 14px; }}
 /* Section with options: a small "Options" button on the right of its blue title (section_with_options) */
-div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] .ion-section.has-options) {{
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .ion-section.has-options) {{
   position: relative; gap: 0;
 }}
-div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] .ion-section.has-options)
-  > div[data-testid="stPopover"] {{
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .ion-section.has-options)
+  > div[data-testid="stLayoutWrapper"]:has(> div[data-testid="stPopover"]) {{
   position: absolute; top: 31px; right: 8px; width: auto !important; z-index: 5;
 }}
 .ion-section.has-options .ion-panel {{ padding-right: 120px; }}
-div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] .ion-section.has-options)
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .ion-section.has-options)
   [data-testid="stPopover"] button {{
   min-height: 0; padding: 2px 10px; background: rgba(255,255,255,.15); border: 1px solid rgba(255,255,255,.6);
   color: #fff;
 }}
-div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] .ion-section.has-options)
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .ion-section.has-options)
   [data-testid="stPopover"] button p {{ font-size: .8rem; color: #fff; }}
 div[data-baseweb="popover"]:has(.section-options) {{ z-index: 1000005 !important; }}
 div[data-testid="stPopoverBody"]:has(.section-options) {{ width: 640px; max-width: 92vw; }}
@@ -485,15 +485,11 @@ def findings_html(lines):
 
 def client_switch(group, options):
     """A bar split in equal parts over the full width, one per option; the chosen one in blue. It only shows one
-    of the panes and hides the others, in the browser: no rerun of the dashboard. A pane is either HTML
-    (pane(group, i, html)) or a container of any Streamlit elements (with pane_container(group, i): ...)."""
+    of the panes (pane(group, i, html)) and hides the others, in the browser: no rerun of the dashboard."""
     def show(option, visible, on=""):
         """CSS showing (or hiding) the pane(s) `option` (None = all) of the group; on = condition on the page."""
         o = "" if option is None else f'[data-option="{option}"]'
-        return (f'{on} .ion-pane[data-group="{group}"]{o} {{ display: {"block" if visible else "none"}; }}'
-                f'{on} div[data-testid="stVerticalBlockBorderWrapper"]:has(> div > div[data-testid="stVerticalBlock"] '
-                f'> div[data-testid="element-container"] .ion-pane-mark[data-group="{group}"]{o}) '
-                f'{{ display: {"block" if visible else "none"}; }}')
+        return f'{on} .ion-pane[data-group="{group}"]{o} {{ display: {"block" if visible else "none"}; }}'
 
     rules = [show(i, False) for i in range(1, len(options))]          # by default: the first option
     for i in range(1, len(options)):
@@ -504,14 +500,6 @@ def client_switch(group, options):
     links = "".join(f'<a data-group="{group}" data-option="{i}">{html.escape(o)}</a>' for i, o in enumerate(options))
     st.markdown(f'<style>{"".join(rules)}</style><div class="ion-seg" data-group="{group}">{links}</div>',
                 unsafe_allow_html=True)
-
-
-def pane_container(group, index):
-    """A pane of client_switch holding any Streamlit elements: `with pane_container(group, i): ...`."""
-    container = st.container()
-    container.markdown(f'<span class="ion-pane-mark" data-group="{group}" data-option="{index}"></span>',
-                       unsafe_allow_html=True)
-    return container
 
 
 def pane(group, index, content_html):
@@ -588,6 +576,45 @@ def chart_html(draw, *args, name=None, tight=True, **kwargs):
             f'<div class="dl"><a href="#" data-name="{html.escape(name)}">⬇ PNG</a></div></div>')
 
 
+CHART_PADDING = {"left": 12, "right": 12, "top": 12, "bottom": 12}
+
+
+def clickable_bars(data, title, height, key, on_pick):
+    """Horizontal bars of `data` (columns Cause, Materials, Colour, Label) as a white card; on_pick runs when a bar
+    is clicked and reads the choice from st.session_state[key] (selection 'pick')."""
+    axis_y = alt.Y("Cause:N", sort=None, title=None, axis=alt.Axis(labelLimit=240, labelFontSize=11, ticks=False))
+    axis_x = alt.X("Materials:Q", title="Number of materials", scale=alt.Scale(domain=[0, data["Materials"].max() * 1.25]),
+                   axis=alt.Axis(tickMinStep=1, format="d", grid=False))
+    base = alt.Chart(data).encode(y=axis_y, x=axis_x)
+    pick = alt.selection_point(name="pick", fields=["Cause"], on="click")
+    bars = base.mark_bar(cursor="pointer").encode(color=alt.Color("Colour:N", scale=None),
+                                                  tooltip=["Cause", "Materials"]).add_params(pick)
+    labels = base.mark_text(align="left", dx=4, fontSize=11, color="#374151").encode(text="Label:N")
+    chart = alt.layer(bars, labels).properties(title=_card_title(title), height=height, background="white", padding=CHART_PADDING)
+    st.altair_chart(chart.configure_view(stroke=None), use_container_width=True, theme=None, key=key,
+                    on_select=on_pick, selection_mode="pick")
+
+
+def clickable_pie(data, title, height, key, on_pick):
+    """Pie of `data` (columns Cause, Materials, Colour, Share), clickable like clickable_bars."""
+    data = data.assign(Order=range(len(data)))
+    base = alt.Chart(data).encode(theta=alt.Theta("Materials:Q", stack=True), order=alt.Order("Order:Q"))
+    pick = alt.selection_point(name="pick", fields=["Cause"], on="click")
+    slices = base.mark_arc(outerRadius=95, stroke="white", cursor="pointer").encode(
+        color=alt.Color("Cause:N", sort=data["Cause"].tolist(),
+                        scale=alt.Scale(domain=data["Cause"].tolist(), range=data["Colour"].tolist()),
+                        legend=alt.Legend(orient="bottom", columns=2, title=None, labelLimit=150, labelFontSize=10)),
+        tooltip=["Cause", "Materials", "Share"]).add_params(pick)
+    shares = base.mark_text(radius=70, fontSize=10, color="#1F2937").encode(text="Share:N")
+    chart = alt.layer(slices, shares).properties(title=_card_title(title, 12), height=height, background="white", padding=CHART_PADDING)
+    st.altair_chart(chart.configure_view(stroke=None), use_container_width=True, theme=None, key=key,
+                    on_select=on_pick, selection_mode="pick")
+
+
+def _card_title(title, size=13):
+    return alt.TitleParams(title.split("\n"), fontSize=size, fontWeight="bold", anchor="middle", color="#111827")
+
+
 def page_end():
     """Empty room at the bottom of the page: the menu can bring the last section's title up under it."""
     st.markdown('<div class="ion-page-end"></div>', unsafe_allow_html=True)
@@ -598,8 +625,8 @@ def panel_header(title):
     st.markdown(f'<div class="ion-panel">{html.escape(title)}</div>', unsafe_allow_html=True)
 
 
-def status_tiles(status_counts: dict, total: int):
-    """The four ION material status tiles, counting the comments of the selection."""
+def status_tiles(status_counts: dict, total: int, unit="materials"):
+    """The four ION material status tiles, counting the materials of the selection."""
     tiles = []
     for status in STATUS_ORDER:
         count = int(status_counts.get(status, 0))
@@ -610,7 +637,7 @@ def status_tiles(status_counts: dict, total: int):
         tiles.append(
             f'<div class="ion-tile{light}" style="background:{STATUS_COLORS[status]}">'
             f'<div class="num">{count}</div><div class="lbl">{status}</div>'
-            f'<div class="pct">{pct:.1f}% of the comments</div>'
+            f'<div class="pct">{pct:.1f}% of the {unit}</div>'
             f'<div class="icon">{STATUS_ICONS[status]}</div></div>'
         )
     st.markdown(f'<div class="ion-tiles">{"".join(tiles)}</div>', unsafe_allow_html=True)

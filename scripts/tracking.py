@@ -17,6 +17,9 @@ A material has several order lines per day (up to 70): they are summarised per i
   N_Lines          the number of order lines.
 No login and no free text other than the cleaned comment is kept.
 
+Second table: data/current_snapshot.csv, ALL the order lines of the last snapshot day, with or without comment, root
+cause or impact: what the dashboard shows today, for the Overview. No comment text, no quantity (build_current).
+
 Usage (from the project root):  python scripts/tracking.py      (~40 s, reads every snapshot)
 """
 
@@ -31,6 +34,7 @@ import data_cleaning as dc  # noqa: E402
 
 project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TRACKING_PATH = os.path.join(project_dir, "data", "item_tracking.csv")
+CURRENT_PATH = os.path.join(project_dir, "data", "current_snapshot.csv")
 
 ITEM = ["MATERIAL_NUMBER", "VENDOR_ACCOUNT_NUMBER"]
 STATUS_RANK = {"Actual Stock Out": 0, "Potential Stock Out": 1, "Below Safety": 2, "Good Part": 3,
@@ -77,14 +81,34 @@ def build_tracking(merged):
     return out.sort_values(key, kind="stable").reset_index(drop=True)
 
 
+def build_current(merged):
+    """All the order lines of the last snapshot day, one row each (same columns as the tracking table)."""
+    last = merged[merged["Snapshot_Date"] == merged["Snapshot_Date"].max()].copy()
+    last["Impact_Level"] = last["Impact"].map(impact_level)
+    last["Commented"] = last["Comment"].notna()
+    return last[["Snapshot_Date"] + ITEM + ["MATERIAL_STATUS", "Root_Cause", "Impact_Level", "Commented", "VENDOR_NAME",
+                                            "MATERIAL_DESC", "MRP_CONTROLLER", "PURCHASING_GROUP"]].reset_index(drop=True)
+
+
+def material_status(lines):
+    """The status of each material: the worst of its order lines (a material is in stock out once, however many
+    purchase orders it has)."""
+    rank = lines["MATERIAL_STATUS"].map(STATUS_RANK).fillna(9)
+    return lines.assign(_rank=rank).sort_values("_rank", kind="stable").groupby("MATERIAL_NUMBER")["MATERIAL_STATUS"].first()
+
+
 if __name__ == "__main__":
     started = time.time()
     merged = dc.merge_snapshots()
     tracking = build_tracking(merged)
     tracking.to_csv(TRACKING_PATH, index=False)
+    current = build_current(merged)
+    current.to_csv(CURRENT_PATH, index=False)
     items = tracking.groupby(ITEM).ngroups
     print(f"{merged.attrs['n_files']} files, {len(merged):,} rows -> {len(tracking):,} item-days, {items:,} items "
           f"({time.time() - started:.0f} s)")
     print(f"with a root cause: {tracking['Root_Cause'].notna().sum():,} | an impact: {tracking['Impact_Level'].notna().sum():,} "
           f"| a comment: {tracking['Comment'].notna().sum():,}")
-    print(f"✅ Saved to {TRACKING_PATH}")
+    print(f"last snapshot {current['Snapshot_Date'].iloc[0]}: {len(current):,} order lines, "
+          f"{current['MATERIAL_NUMBER'].nunique():,} materials")
+    print(f"✅ Saved to {TRACKING_PATH} and {CURRENT_PATH}")

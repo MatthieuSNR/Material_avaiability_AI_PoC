@@ -2,8 +2,8 @@
 Streamlit dashboard "Material Availability – Insights Lab" (run: venv/bin/streamlit run scripts/app.py).
 
 One page, in the order of the menu:
-  Overview (status tiles, Top Root Causes) · Filtered Comments · Most Frequent Comments* · Root Cause Trends* ·
-  Key Statistics · Impact by Root Cause* · Weak Signals* · Smart Analysis
+  Overview (status tiles, Top Root Causes: all the order lines of the last snapshot) · Most Frequent Comments* ·
+  Root Cause Trends* · Key Statistics · Impact by Root Cause* · Watchlist* · Smart Analysis
   (* drawn by scripts/insights_pages.py from data/item_tracking.csv; the others here, with scripts/stats_engine.py)
 Also: password page (APP_PASSWORD in .env), sidebar filters + timeframe + saved views, which apply to every section.
 Look and components (menu, switches, charts, tables, loading screen) are in scripts/ui.py.
@@ -12,11 +12,11 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
-import numpy as np
 import json
 import os
 import sys
 import threading
+from functools import partial
 import time
 
 # Make scripts/ importable so we can reuse our modules
@@ -30,6 +30,7 @@ import config
 import ui
 import insights
 import insights_pages
+from tracking import material_status
 
 
 
@@ -115,6 +116,7 @@ def impact_level(value):
 
 
 df["Impact_Level"] = df["Impact"].map(impact_level)
+df["Stakeholder"] = df["Root_Cause"].map(insights.stakeholder).where(df["Root_Cause"].notna())
 
 # Convert dates to datetime for proper sorting and filtering
 for col in ["Snapshot_Date", "First_Seen", "Last_Seen"]:
@@ -125,12 +127,11 @@ for col in ["Snapshot_Date", "First_Seen", "Last_Seen"]:
 # Title + navigation menu (each entry scrolls down to its section; all sections follow each other)
 SECTIONS = [
     ("overview", "Overview"),
-    ("filtered-comments", "Filtered Comments"),
     ("frequent-comments", "Most Frequent Comments"),
     ("trends", "Root Cause Trends"),
     ("key-statistics", "Key Statistics"),
     ("cause-impact", "Impact by Root Cause"),
-    ("weak-signals", "Weak Signals"),
+    ("watchlist", "Watchlist"),
     ("ai-summary", "Smart Analysis"),   # always the last one
 ]
 SECTION_TITLES = dict(SECTIONS)
@@ -143,7 +144,7 @@ ui.scroll_spy()  # menu entry of the section on screen in blue
 # Stored on this Mac (data/interim, not pushed to GitHub), so every user of the shared app sees them.
 VIEWS_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                           "data", "interim", "saved_views.json")
-FILTER_KEYS = ["f_mrp", "f_pgroup", "f_vendor", "f_material", "f_root_cause", "f_impact"]
+FILTER_KEYS = ["f_mrp", "f_pgroup", "f_vendor", "f_material", "f_stakeholder", "f_root_cause", "f_impact"]
 TABLE_COLUMNS = {  # data column -> displayed name, in the default order of the comments table
     "Comment_EN": "Comment (EN)", "Comment": "Original comment", "First_Seen": "First seen",
     "Last_Seen": "Last seen", "Days_Active": "Days visible", "STOCKOUT_DATE": "Stockout Date",
@@ -235,17 +236,31 @@ with st.sidebar.expander("Views", expanded=False):
 
 
 # Filters, from top to bottom: MRP controller, purchasing group (organisational
-# responsibility), vendor, material, root cause, impact.
+# responsibility), vendor, material, stakeholder, root cause, impact.
 # Every filter accepts several values (e.g. an MRP controller and the colleagues they back up);
 # an empty filter means "All". The filters cascade: each one only offers the values that exist
-# within the filters above it (e.g. only the vendors of the selected MRP controllers).
-cascade_df = df
+# within the filters above it (e.g. only the vendors of the selected MRP controllers). They offer every value of the
+# data, commented or not: the comments, the tracking table and the last snapshot.
+FILTER_COLUMNS = ["MRP_CONTROLLER", "PURCHASING_GROUP", "VENDOR_LABEL", "MATERIAL_LABEL", "Stakeholder", "Root_Cause",
+                  "Impact_Level"]
+tracking_all, current_all = insights_pages.load_tracking(), insights_pages.load_current()
+
+
+@st.cache_resource
+def filter_values(_frames):
+    """The combinations of filter values of the data (the tables never change while the app runs)."""
+    values = pd.concat([frame[FILTER_COLUMNS] for frame in _frames if frame is not None])
+    return values.assign(Impact_Level=values["Impact_Level"].fillna("Not communicated")).drop_duplicates()
+
+
+all_values = filter_values((df, tracking_all, current_all))
+cascade_df = all_values
 
 
 def multi_filter(box, label, column, key, order=None):
     global cascade_df
     available = set(cascade_df[column].dropna().unique())
-    selected = [v for v in st.session_state.get(key, []) if v in set(df[column].dropna())]
+    selected = [v for v in st.session_state.get(key, []) if v in set(all_values[column].dropna())]
     st.session_state[key] = selected  # drops values of a saved view that no longer exist
     options = sorted(available | set(selected), key=order) if order else sorted(available | set(selected))
     selected = box.multiselect(label, options, key=key, placeholder="All")
@@ -264,6 +279,7 @@ selected_mrp = multi_filter(filters_box, "MRP Controller", "MRP_CONTROLLER", "f_
 selected_pgroup = multi_filter(filters_box, "Purchasing Group", "PURCHASING_GROUP", "f_pgroup")
 selected_vendor_label = multi_filter(filters_box, "Vendor", "VENDOR_LABEL", "f_vendor")          # name or account number
 selected_material_label = multi_filter(filters_box, "Material", "MATERIAL_LABEL", "f_material")  # number or description
+selected_stakeholder = multi_filter(filters_box, "Stakeholder", "Stakeholder", "f_stakeholder")   # prefix of the root cause
 selected_root_cause = multi_filter(filters_box, "Root Cause", "Root_Cause", "f_root_cause")
 selected_impact = multi_filter(filters_box, "Impact", "Impact_Level", "f_impact", order=impact_order)
 
@@ -291,16 +307,21 @@ if timeframe_option == "Custom period":
     if isinstance(date_range, tuple) and len(date_range) == 2:
         start_ts = pd.to_datetime(date_range[0])
         end_ts = pd.to_datetime(date_range[1])
-timeframe_box.caption("A comment is in the period if it was visible in the dashboard at least once during it.")
+timeframe_box.caption("For the analyses over time (comments, trends, statistics, impact, watchlist): a comment is in "
+                      "the period if it was visible at least once during it. The Overview always shows the last snapshot.")
 
 
 # Filter data
 filtered_df = df.copy()
 for column, selected in [("MRP_CONTROLLER", selected_mrp), ("PURCHASING_GROUP", selected_pgroup),
-                         ("VENDOR_LABEL", selected_vendor_label), ("MATERIAL_LABEL", selected_material_label),
-                         ("Root_Cause", selected_root_cause), ("Impact_Level", selected_impact)]:
+                         ("Stakeholder", selected_stakeholder), ("Root_Cause", selected_root_cause),
+                         ("Impact_Level", selected_impact)]:
     if selected:
         filtered_df = filtered_df[filtered_df[column].isin(selected)]
+for column, selected in [("VENDOR_LABEL", selected_vendor_label), ("MATERIAL_LABEL", selected_material_label)]:
+    if selected:   # on the number: a description can change from one snapshot to the next
+        keys = {insights_pages.label_key(v) for v in selected}
+        filtered_df = filtered_df[filtered_df[column].map(insights_pages.label_key).isin(keys)]
 
 # --- Timeframe filter (Part B: apply the choice to filtered_df) ---
 # A comment stays visible for many days: keep it if [First_Seen, Last_Seen] overlaps the period.
@@ -333,49 +354,56 @@ def selection_label(values, short=False):
 selection_parts = [p for p in [selection_label(selected_mrp), selection_label(selected_pgroup),
                                selection_label(selected_vendor_label, short=True),
                                selection_label(selected_material_label, short=True),
-                               selection_label(selected_root_cause), selection_label(selected_impact)] if p]
+                               selection_label(selected_stakeholder), selection_label(selected_root_cause),
+                               selection_label(selected_impact)] if p]
 selection_name = " / ".join(selection_parts) if selection_parts else "All comments"
 
 # The sidebar filters, as the Insights Lab and the Smart Analysis read them
 LAB_SELECTIONS = {"MRP_CONTROLLER": selected_mrp, "PURCHASING_GROUP": selected_pgroup,
                   "VENDOR_LABEL": selected_vendor_label, "MATERIAL_LABEL": selected_material_label,
-                  "Root_Cause": selected_root_cause, "Impact_Level": selected_impact}
+                  "Stakeholder": selected_stakeholder, "Root_Cause": selected_root_cause,
+                  "Impact_Level": selected_impact}
 
 # Compute all statistics ONCE (used by all sections and the AI Summary)
 stats = compute_stats(filtered_df, df)
 
 # ================= OVERVIEW =================
-ui.section("overview", "Overview — " + selection_name)
+# What the dashboard shows today: ALL the order lines of the last snapshot, with or without comment, root cause or
+# impact. The timeframe does not apply here; the other sections use the whole history.
+overview_name = " / ".join(selection_parts) if selection_parts else "All materials"
+ui.section("overview", "Overview — " + overview_name)
+if current_all is None:
+    st.warning("Last snapshot not built yet: run `python scripts/tracking.py`.")
+    st.stop()
+current_df = insights_pages.filter_tracking(current_all, LAB_SELECTIONS)
+statuses = material_status(current_df)
+n_materials, n_all_materials = len(statuses), current_all["MATERIAL_NUMBER"].nunique()
+last_snapshot = current_all["Snapshot_Date"].max()
 
-# --- Headline: where the selection stands among all comments ---
-if stats["total_comments"] > 0:
-    st.markdown(
-        f"**{selection_name}**: {stats['total_comments']} comments "
-        f"(**{stats['share_of_all_comments_pct']}%** of all {len(df)} comments) · "
-        f"{stats['root_cause_coverage_pct']}% have a root cause · "
-        f"{stats['comments_still_open']} still visible on the last snapshot ({stats['latest_snapshot']})"
-    )
+# --- Headline: where the selection stands today ---
+st.markdown(
+    f"**Situation on {last_snapshot:%d.%m.%Y} (last snapshot)**: {n_materials:,} material{'s' if n_materials != 1 else ''} "
+    f"({n_materials / n_all_materials * 100:.1f}% of all {n_all_materials:,}) · {len(current_df):,} order line{'s' if len(current_df) != 1 else ''} · "
+    f"{current_df.loc[current_df['Commented'], 'MATERIAL_NUMBER'].nunique():,} with a comment · "
+    f"{current_df.dropna(subset=['Root_Cause'])['MATERIAL_NUMBER'].nunique():,} with a root cause"
+)
 
 # --- Material status tiles (ION colour code) ---
-# Each comment is written on an MRP element (a material / purchase order line of the ION
-# workbench). The tiles count the comments by the ION status of that element.
-ui.panel_header("Material status of the commented items")
-ui.status_tiles(stats.get("material_status_counts", {}), stats["total_comments"])
-st.caption("Each comment is written on an item of the ION workbench (a material / purchase order line). "
-           "The tiles show the status of that item the last time the comment was visible, e.g. how many "
-           "comments concern items in Actual Stock Out.")
+ui.panel_header("Material status today")
+ui.status_tiles(statuses.value_counts().to_dict(), n_materials)
+st.caption("A material counts once, whatever its number of purchase orders and lines, with the worst status of its "
+           "lines. The timeframe does not change the Overview; the other sections use the history.")
 ui.status_definitions()
 
 # --- Sections: all analyses follow each other on one page (menu at the top to jump) ---
 # (Top Root Causes, tab2, is part of the Overview: its container comes first)
-tab2, tab1, tab3, tab5, tab6, tab_impact, tab_signals, tab7 = [st.container() for _ in range(8)]
+tab2, tab3, tab5, tab6, tab_impact, tab_signals, tab7 = [st.container() for _ in range(7)]
 
 
 
-# ================= SECTION 1: Filtered Comments =================
+# ================= Comments one by one (option "Unmerged comments" of Most Frequent Comments) =================
 
-with tab1:
-    ui.section("filtered-comments", SECTION_TITLES["filtered-comments"])
+def unmerged_comments():
     # "▥ Columns" (right): a panel floating over the table, under its header row (ui.column_picker).
     # Same state as before (col_order / col_visible), so the saved views keep their columns.
     shown = ui.table_toolbar("col", list(TABLE_COLUMNS.values()), DEFAULT_COLUMNS, order_key="col_order",
@@ -410,6 +438,12 @@ with tab2:
     # Options (small button on the right of the title): how many, and how to treat the stakeholders
     # (prefix of the root cause: PL_ = Planning, S_ = Supplier...)
     AS_ENTERED, MERGED, ONE_STAKEHOLDER = ("As entered", "Stakeholders merged", "One stakeholder")
+
+    def with_cause(lines):
+        """One row per material and root cause: a material counts once per cause, whatever its number of lines."""
+        return lines.dropna(subset=["Root_Cause"]).drop_duplicates(["MATERIAL_NUMBER", "Root_Cause"])
+
+    cause_rows, all_cause_rows = with_cause(current_df), with_cause(current_all)
     with ui.section_with_options("top-root-causes", "Top Root Causes"):
         top_n_causes = st.selectbox("Select a view:", options=["Top 5", "Top 10", "Top 20"], key="radio_top_causes")
         cause_view = st.radio(
@@ -417,7 +451,7 @@ with tab2:
             help="As entered: one bar per root cause, with its stakeholder (PL_Internal Errors and "
                  "P_Internal Error are two bars). Stakeholders merged: the same root cause counts once, whatever "
                  "the stakeholder. One stakeholder: only the root causes of the stakeholder chosen below.")
-        stakeholders = filtered_df["Root_Cause"].dropna().map(insights.stakeholder).value_counts().index.tolist()
+        stakeholders = cause_rows["Stakeholder"].value_counts().index.tolist()
         chosen_stakeholder = (st.selectbox("Stakeholder:", stakeholders or ["–"], key="top_causes_stakeholder")
                               if cause_view == ONE_STAKEHOLDER else None)
     n_causes = int(top_n_causes.split(" ")[1])
@@ -427,129 +461,90 @@ with tab2:
         if cause_view == MERGED:
             return insights.merge_stakeholders(frame["Root_Cause"])
         if cause_view == ONE_STAKEHOLDER:
-            return frame["Root_Cause"].where(frame["Root_Cause"].map(insights.stakeholder) == chosen_stakeholder)
+            return frame["Root_Cause"].where(frame["Stakeholder"] == chosen_stakeholder)
         return frame["Root_Cause"]
 
-    causes, all_causes = causes_of(filtered_df), causes_of(df)
+    def pick_root_cause(chart_key, merged):
+        """A click on a bar or a slice: the Root Cause filter of the sidebar takes this cause. It runs before the
+        next rerun, when the filter may still be set. Merged view: all the root causes behind the bar."""
+        points = st.session_state[chart_key]["selection"].get("pick") or []
+        picked = points[0].get("Cause") if points else None
+        if picked and picked != "Other":
+            known = pd.Series(sorted(all_values["Root_Cause"].dropna().unique()))
+            st.session_state["f_root_cause"] = known[(insights.merge_stakeholders(known) if merged else known) == picked].tolist()
+
+    causes, all_causes = causes_of(cause_rows), causes_of(all_cause_rows)
     view_label = {MERGED: " (stakeholders merged)", ONE_STAKEHOLDER: f" ({chosen_stakeholder})"}.get(cause_view, "")
+    n_with_cause = cause_rows["MATERIAL_NUMBER"].nunique()
 
-    # 1. Comments without a root cause are counted apart (they are not a cause)
-    total_comments = len(filtered_df)
-    no_cause_count = int(filtered_df["Root_Cause"].isna().sum())
-
-    # 2. Count root causes in the FILTERED data (respects all filters)
+    # Count root causes in the FILTERED data (respects all filters)
     root_cause_counts = causes.value_counts().head(n_causes)
 
     if root_cause_counts.empty:
-        st.info("No root cause filled in for the current filters.")
+        st.info("No root cause on the last snapshot for the current filters.")
     else:
-        # 3. Build the color gradient: green (low) -> yellow -> orange -> red (high)
-        #    We use a custom colormap and scale each bar by its count relative to the max
+        # Colours of the bars: green (low) -> yellow -> orange -> red (high), by count relative to the max
         colormap = mcolors.LinearSegmentedColormap.from_list(
             "severity", ["#2ecc71", "#f1c40f", "#e67e22", "#e74c3c"]  # green, yellow, orange, red
         )
         max_count = root_cause_counts.max()
-        colors = [colormap(count / max_count) for count in root_cause_counts.values]
+        bars = pd.DataFrame({
+            "Cause": root_cause_counts.index, "Materials": root_cause_counts.values,
+            "Colour": [mcolors.to_hex(colormap(count / max_count)) for count in root_cause_counts.values],
+            "Label": [f"{count} ({count / n_with_cause * 100:.1f}%)" for count in root_cause_counts.values]})
 
-        # Bar chart and pie side by side (Streamlit stacks the columns on a small screen).
-        # Both figures have the SAME height and widths in the same ratio as the columns (3:2),
-        # so they are displayed at the same height and grow / shrink with the screen.
-        col_bar, col_pie = st.columns([3, 2], gap="medium")
-        chart_height = max(3.6, len(root_cause_counts) * 0.26)
-
-        # 4. Plot (horizontal bars: easier to read long root cause names). A function of its data: ui.chart keeps
-        #    the picture, so a rerun with the same data does not draw it again.
-        def draw_bars(counts, colors, title, total, height):
-            fig, ax = plt.subplots(figsize=(6, height), facecolor="white")
-            bars = ax.barh(counts.index[::-1], counts.values[::-1], color=colors[::-1])
-            fig.suptitle(title, fontsize=12, fontweight="bold")  # centred on the figure, not over the bars only
-            ax.set_xlabel("Number of Comments")
-            ax.set_xlim(0, counts.max() * 1.22)  # room for the labels at the end of the bars
-            # Add the count and the share of the selection's comments at the end of each bar
-            for bar, count in zip(bars, counts.values[::-1]):
-                ax.text(bar.get_width() + counts.max() * 0.01, bar.get_y() + bar.get_height() / 2,
-                        f"{count} ({count / total * 100:.1f}%)", va="center", fontsize=8)
-            fig.tight_layout()
-            return fig
-
-        with col_bar:
-            # tight=False: keep the exact figure size (same height as the pie)
-            ui.chart(draw_bars, root_cause_counts, colors,
-                     ui.chart_title(f"Top {len(root_cause_counts)} Root Causes{view_label}", selection_name, 46),
-                     total_comments,
-                     chart_height, name="top_root_causes", tight=False)
-            st.caption(f"% = share of the {total_comments} comments of the selection. "
-                       f"{no_cause_count} comments ({no_cause_count / total_comments * 100:.1f}%) have no root cause.")
-
-        # 5. Show the percentage share
-        # Split: top N causes as individual slices, rest grouped as "Other"
+        # Top N causes as individual slices, the rest grouped as "Other"
         all_cause_counts = causes.value_counts()
-        top_counts = all_cause_counts.head(n_causes)
-        other_count = all_cause_counts.iloc[n_causes:].sum()
+        other_count = int(all_cause_counts.iloc[n_causes:].sum())
+        palette = plt.cm.tab20.colors if len(root_cause_counts) > 12 else plt.cm.Set3.colors
+        slices = pd.DataFrame({"Cause": root_cause_counts.index, "Materials": root_cause_counts.values,
+                               "Colour": [mcolors.to_hex(c) for c in palette[:len(root_cause_counts)]]})
+        if other_count:
+            slices.loc[len(slices)] = ["Other", other_count, "#BDBDBD"]
+        shares = slices["Materials"] / slices["Materials"].sum() * 100
+        slices["Share"] = [f"{p:.1f}%" if p >= 4 else "" for p in shares]
 
-        pie_labels = top_counts.index.tolist()
-        pie_values = top_counts.values.tolist()
-        if other_count > 0:
-            pie_labels.append("Other")
-            pie_values.append(other_count)
-
-        # Pie on top, legend below (labels on the slices overlap when there are many causes)
-        def draw_pie(values, labels, n_top, has_other, title, height):
-            fig_pie = plt.figure(figsize=(3.85, height), facecolor="white")  # 3.85: same height as the bars once in the cards
-            legend_rows = -(-len(labels) // 2)
-            legend_frac = (0.15 + legend_rows * 0.15) / height
-            title_frac = (0.35 + 0.17 * title.count("\n")) / height
-            ax_pie = fig_pie.add_axes([0.02, legend_frac + 0.02, 0.96, 1 - legend_frac - title_frac - 0.03])
-            palette = plt.cm.tab20.colors if n_top > 12 else plt.cm.Set3.colors
-            pie_colors = list(palette[:n_top]) + (["#BDBDBD"] if has_other else [])  # "Other" in grey
-            wedges, _, _ = ax_pie.pie(
-                values,
-                autopct=lambda p: f"{p:.1f}%" if p >= 4 else "",  # Show percentage on the large slices
-                startangle=90,
-                counterclock=False,
-                colors=pie_colors,  # Distinct colors
-                wedgeprops={"edgecolor": "white", "linewidth": 1},
-                textprops={"fontsize": 8},
-            )
-            fig_pie.suptitle(title, fontsize=10, fontweight="bold", y=1 - 0.08 / height)
-            legend_labels = [l if len(l) <= 26 else l[:25] + "…" for l in labels]
-            fig_pie.legend(wedges, legend_labels, loc="lower center", bbox_to_anchor=(0.5, 0.01),
-                           ncol=2, fontsize=7, frameon=False, handlelength=1, columnspacing=1)
-            return fig_pie
-
+        # Bar chart and pie side by side (Streamlit stacks the columns on a small screen). The key changes with the
+        # filters: a new chart has no bar selected, so the same bar can be clicked again later.
+        col_bar, col_pie = st.columns([3, 2], gap="medium")
+        chart_height = max(260, len(root_cause_counts) * 24)
+        chart_id = hash(repr((LAB_SELECTIONS, cause_view, n_causes, chosen_stakeholder)))
+        with col_bar:
+            ui.clickable_bars(bars, ui.chart_title(f"Top Root Causes{view_label}", overview_name, 60),
+                              chart_height, f"bars_{chart_id}", partial(pick_root_cause, f"bars_{chart_id}", cause_view == MERGED))
+            st.caption(f"Click a bar to filter the dashboard on this root cause. {n_with_cause} of the {n_materials:,} "
+                       "materials of the last snapshot have a root cause; % = share of these materials.")
         with col_pie:
-            ui.chart(draw_pie, [int(v) for v in pie_values], pie_labels, len(top_counts), other_count > 0,
-                     ui.chart_title(f"Root Cause Share{view_label}", selection_name, 42), chart_height,
-                     name="root_cause_share",
-                     tight=False)
-            # Keep the caption only for the "Other" context
-            st.caption(f"Share among the comments WITH a root cause"
+            ui.clickable_pie(slices, ui.chart_title(f"Root Cause Share{view_label}", overview_name, 42), chart_height,
+                             f"pie_{chart_id}", partial(pick_root_cause, f"pie_{chart_id}", cause_view == MERGED))
+            st.caption(f"Share among the materials WITH a root cause"
                        + (f" of {chosen_stakeholder}. " if cause_view == ONE_STAKEHOLDER else ". ")
-                       + (f"'Other' = all remaining root causes beyond the Top {n_causes} ({other_count} comments)."
+                       + (f"'Other' = all remaining root causes beyond the Top {n_causes} ({other_count} materials)."
                           if other_count else ""))
 
-        # 6. Compare with all comments: is a root cause over-represented in this selection?
+        # Compare with all materials: is a root cause over-represented in this selection?
         if selection_parts:
-            all_total = len(df)
+            all_total = all_cause_rows["MATERIAL_NUMBER"].nunique()
             compare_df = pd.DataFrame({
                 "Root Cause": root_cause_counts.index,
-                f"% of {selection_name} comments": (root_cause_counts.values / total_comments * 100).round(2),
-                "% of all comments": [round((all_causes == c).sum() / all_total * 100, 2)
-                                      for c in root_cause_counts.index],
+                f"% of {overview_name}": (root_cause_counts.values / n_with_cause * 100).round(2),
+                "% of all materials": [round((all_causes == c).sum() / all_total * 100, 2)
+                                       for c in root_cause_counts.index],
             })
             compare_df["Difference (pts)"] = compare_df.iloc[:, 1] - compare_df.iloc[:, 2]
-            st.markdown("**Compared with all comments**")
-            st.dataframe(ui.compare_colours(compare_df, compare_df.columns[1], "% of all comments", decimals=2),
+            st.markdown("**Compared with all materials**")
+            st.dataframe(ui.compare_colours(compare_df, compare_df.columns[1], "% of all materials", decimals=2),
                          use_container_width=True, hide_index=True,
-                         column_config={compare_df.columns[1]: st.column_config.NumberColumn(help=ui.COMPARE_HELP)})
-            st.caption(ui.COMPARE_LEGEND.replace("'% of selection'", "the selection"))
+                         column_config={compare_df.columns[1]: st.column_config.NumberColumn(
+                             help=ui.COMPARE_HELP.replace("comments", "materials"))})
+            st.caption(ui.COMPARE_LEGEND.replace("'% of selection'", "the selection").replace("comments", "materials"))
 
 
 # ================= SECTIONS 3-4: Most Frequent Comments, Root Cause Trends =================
 # The validated pages of the Insights Lab (scripts/insights_pages.py) replace the first versions: similar
 # wordings grouped; trends on all snapshot rows, with what changed between two weeks.
 with tab3:
-    insights_pages.frequent_comments_section(filtered_df, selection_name)
+    insights_pages.frequent_comments_section(filtered_df, selection_name, unmerged_comments)
 
 with tab5:
     insights_pages.trends_section(df, LAB_SELECTIONS, selection_name, PERIOD)
@@ -657,8 +652,8 @@ def render_ai_summary(mode: str):
     label = "Smart Analysis" if cloud else "local LLM (LM Studio)"
     session_key = "ai_summary_cloud" if cloud else "ai_summary"
 
-    filter_key = tuple(tuple(v) for v in (selected_mrp, selected_pgroup, selected_vendor_label,
-                  selected_material_label, selected_root_cause, selected_impact)) + (timeframe_option,)
+    filter_key = tuple(tuple(v) for v in (selected_mrp, selected_pgroup, selected_vendor_label, selected_material_label,
+                  selected_stakeholder, selected_root_cause, selected_impact)) + (timeframe_option,)
 
     pseudonymise_on = cloud  # names, vendors and material numbers are always replaced before sending
     st.caption("A written review of the current selection: key findings, what drives the issues, early warnings, "
@@ -779,12 +774,12 @@ def render_ai_summary(mode: str):
                                + ("" if cloud else f" with {saved[5]} · figures computed by pandas"))
 
 
-# ================= Impact by Root Cause, Weak Signals (scripts/insights_pages.py) =================
+# ================= Impact by Root Cause, Watchlist (scripts/insights_pages.py) =================
 with tab_impact:
     insights_pages.impact_section(df, LAB_SELECTIONS, selection_name, PERIOD)
 
 with tab_signals:
-    insights_pages.weak_signals_section(df, LAB_SELECTIONS, selection_name, PERIOD)
+    insights_pages.watchlist_section(df, LAB_SELECTIONS, selection_name, PERIOD)
 
 
 with tab7:

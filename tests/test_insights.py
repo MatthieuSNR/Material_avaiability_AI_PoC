@@ -214,3 +214,17 @@ def test_chart_is_drawn_once_for_the_same_data():
     ui.chart(draw, frame.copy(), "Test chart")                      # same content: picture reused
     ui.chart(draw, frame.assign(n=[3, 2]), "Test chart")            # other data: drawn again
     assert calls == ["Test chart", "Test chart"]
+
+
+def test_last_snapshot_keeps_all_lines_and_a_material_counts_once():
+    merged = pd.DataFrame({
+        "Snapshot_Date": ["2026-09-19", "2026-09-20", "2026-09-20", "2026-09-20"],
+        "MATERIAL_NUMBER": [1, 1, 1, 2], "VENDOR_ACCOUNT_NUMBER": [10, 10, 10, 20],
+        "MATERIAL_STATUS": ["Good Part", "Good Part", "Actual Stock Out", "Below Safety"],
+        "Root_Cause": [None, "S_Planning Issue", None, None], "Impact": [None, "Production (Stop&Go)", None, None],
+        "Comment": [None, "text", None, None], "VENDOR_NAME": ["V", "V", "V", "W"], "MATERIAL_DESC": ["A", "A", "A", "B"],
+        "MRP_CONTROLLER": ["C"] * 4, "PURCHASING_GROUP": ["P"] * 4})
+    current = tr.build_current(merged)
+    assert len(current) == 3 and "Comment" not in current and current["Commented"].sum() == 1   # uncommented lines stay
+    assert current["Impact_Level"].dropna().tolist() == ["Production"]
+    assert tr.material_status(current).to_dict() == {1: "Actual Stock Out", 2: "Below Safety"}

@@ -17,7 +17,7 @@ import zipfile
 
 project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BUNDLE_PATH = os.path.join(project_dir, "deploy", "data.enc")
-FILES = ["data/cleaned_comments.csv", "data/item_tracking.csv",
+FILES = ["data/cleaned_comments.csv", "data/item_tracking.csv", "data/current_snapshot.csv",
          "data/interim/embedding_cache.npz",   # the language model is only loaded for comments it has never seen
          "data/interim/saved_views.json"]
 
@@ -35,9 +35,11 @@ def build(key):
 
 
 def unpack_if_needed(key):
-    """Deployed app: write the data files from deploy/data.enc when data/ does not have them (a local run keeps
-    its own files). Returns True when the files were unpacked."""
-    if os.path.exists(os.path.join(project_dir, FILES[0])) or not os.path.exists(BUNDLE_PATH):
+    """Deployed app: write the data files from deploy/data.enc when data/ does not have them all or the bundle is
+    newer (a new one was pushed). Returns True when the files were unpacked."""
+    paths = [os.path.join(project_dir, name) for name in FILES[:3]]
+    if not os.path.exists(BUNDLE_PATH) or (all(map(os.path.exists, paths)) and
+                                           os.path.getmtime(paths[0]) >= os.path.getmtime(BUNDLE_PATH)):
         return False
     from cryptography.fernet import Fernet
     with open(BUNDLE_PATH, "rb") as f:

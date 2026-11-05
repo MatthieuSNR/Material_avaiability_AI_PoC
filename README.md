@@ -12,9 +12,9 @@ This project aims to **extract actionable insights** for Roche’s planner comme
 - **Abbreviation library** (`lexicon/abbreviations.csv`): German and English abbreviations of the comments, reviewed by Matthieu and Alexis on 28.10; the 114 certain ones are written out (`Comment_Expanded`) before translation; names (suppliers, instruments, SAP codes) and ambiguous ones stay as written.
 - **Translation**: German entries translated to English with DeepL (`Comment_EN`), after pseudonymisation; a jargon glossary (`lexicon/glossary_de_en.csv`, e.g. *Vorzug* → pull-in, *Orderbuch* → source list) and a cache (each entry paid for once).
 - **Tracking table** (`data/item_tracking.csv`): one row per day and item from **all** snapshot rows (also without comment), for the trends, the impacts and the weak signals.
-- **Streamlit dashboard "Insights Lab"** (`scripts/app.py`): one page, a menu over the full width, a password page when shared. Sections: **Overview** (material status tiles, top root causes with stakeholder options), **Filtered Comments** (column picker), **Most Frequent Comments** (similar wordings grouped), **Root Cause Trends** (all snapshots, what changed between two weeks), **Key Statistics**, **Impact by Root Cause**, **Weak Signals** (phrases, context, watch list), **Smart Analysis** (LM Studio on this Mac, Mistral API pseudonymised once deployed; copy / Word / text export). Sidebar filters (MRP controller, purchasing group, vendor, material, root cause, impact, timeframe) apply everywhere; saved views; PNG export of every chart; explanations and statistics folded for the analysts.
+- **Streamlit dashboard "Insights Lab"** (`scripts/app.py`): one page, a menu over the full width, a password page when shared. Sections: **Overview** (what the dashboard shows today: all the order lines of the last snapshot, a material counted once; status tiles, clickable top root causes that set the Root Cause filter), **Most Frequent Comments** (similar wordings grouped, or the comments one by one with a column picker), **Root Cause Trends** (all snapshots, what changed between two weeks), **Key Statistics**, **Impact by Root Cause**, **Watchlist** (open items at risk; the first entries, the context and the weights behind it are in the statistical details for analysts), **Smart Analysis** (LM Studio on this Mac, Mistral API pseudonymised once deployed; copy / Word / text export). Sidebar filters (MRP controller, purchasing group, vendor, material, stakeholder, root cause, impact, timeframe) apply everywhere; saved views; PNG export of every chart; explanations and statistics folded for the analysts.
 - **Online access** (Streamlit Community Cloud): testers open the dashboard at a fixed link, behind a password; the data is pushed to GitHub only encrypted (`deploy/data.enc`).
-- **Tests**: 64 pytest tests on synthetic data, no network.
+- **Tests**: 65 pytest tests on synthetic data, no network.
 
 ## 🛠️ Tools & Libraries
 Versions installed in `venv` (Python 3.12.4); minimum versions in `requirements.txt`.
@@ -31,7 +31,7 @@ Versions installed in `venv` (Python 3.12.4); minimum versions in `requirements.
 | sentence-transformers (+ PyTorch, transformers) | 3.4.1 (2.14.1, 4.57.6) | Grouping by meaning: local model all-MiniLM-L6-v2 |
 | openai (client) | 3.26.0 | Mistral API (cloud) and LM Studio (local), both OpenAI-compatible |
 | Mistral API / LM Studio | ministral-14b-latest / Mistral 7B | Smart Analysis: deployed app / on this Mac (localhost) |
-| Streamlit | 1.32.0 | Dashboard |
+| Streamlit (+ Altair) | 1.66.1 (5.5.0) | Dashboard; clickable charts of the Overview |
 | streamlit-sortables | 0.3.1 | Drag and drop of the table columns |
 | matplotlib | 3.8.4 | Charts of the dashboard (PNG) |
 | seaborn | 0.13.2 | Heatmap of a notebook exploration |
@@ -52,7 +52,8 @@ Roche_AI_PoC/
 │   ├── Snapshot_2026/           # Raw daily snapshots
 │   ├── interim/                 # Translation cache, DeepL glossary id, embedding cache, saved views, review sheets
 │   ├── cleaned_comments.csv     # Cleaned, expanded and translated comments
-│   └── item_tracking.csv        # One row per (day, material, vendor) from all snapshot rows
+│   ├── item_tracking.csv        # One row per (day, material, vendor) from all snapshot rows
+│   └── current_snapshot.csv     # All the order lines of the last snapshot day (Overview)
 ├── lexicon/
 │   ├── abbreviations.csv        # Abbreviation library (DE / EN), reviewed 28.10
 │   └── glossary_de_en.csv       # DeepL glossary of German jargon
@@ -63,10 +64,10 @@ Roche_AI_PoC/
 │   ├── translation.py           # Step 7: pseudonymise + DeepL entry by entry, glossary, cache
 │   ├── glossary.py              # DeepL glossary: checks, creation / reuse, forced terms
 │   ├── pseudonymise.py          # Hides names, IDs, quantities, prices before DeepL / Mistral
-│   ├── tracking.py              # Builds data/item_tracking.csv
+│   ├── tracking.py              # Builds data/item_tracking.csv and data/current_snapshot.csv
 │   ├── stats_engine.py          # Statistics of the dashboard and of the Smart Analysis
 │   ├── insights.py              # Grouping, trends, root cause × impact, weak signals (analyses)
-│   ├── insights_pages.py        # Sections Most Frequent Comments, Trends, Impact, Weak Signals (Streamlit)
+│   ├── insights_pages.py        # Sections Most Frequent Comments, Trends, Impact, Watchlist (Streamlit)
 │   ├── llm_summary.py           # Smart Analysis: prompt, Mistral API, LM Studio
 │   ├── app.py                   # Streamlit dashboard
 │   ├── ui.py                    # Look, menu, switches, charts, tables, loading screen
@@ -74,7 +75,7 @@ Roche_AI_PoC/
 │   ├── data_bundle.py           # Encrypted copy of the data for the deployed app (deploy/data.enc)
 │   ├── requirements.txt         # Dependencies of the deployed dashboard (Streamlit Cloud)
 │   └── *.ipynb                  # data_cleaning, translation, llm_summary: step by step
-├── tests/                       # pytest (64 tests)
+├── tests/                       # pytest (65 tests)
 ├── docs/                        # project_steps.md, project_structure.md, tools_justification.md
 ├── assets/, .streamlit/         # Roche logo, favicon, theme
 ├── deploy/data.enc              # Data of the deployed app, encrypted (key DATA_KEY: .env + Streamlit secrets)
@@ -103,7 +104,7 @@ Every file is described in [docs/project_structure.md](docs/project_structure.md
 2. **Build and translate the comments** (after adding new snapshots to `data/Snapshot_2026/`):
    ```bash
    python scripts/data_cleaning.py
-   python scripts/tracking.py                # tracking table of all snapshot rows (trends, impacts, weak signals)
+   python scripts/tracking.py                # tracking table of all snapshot rows (trends, impacts, watchlist) + last snapshot (Overview)
    python scripts/abbreviations.py --check --sheet    # validates the library, writes the Excel sheet for the planners (data/interim)
    python scripts/glossary.py --check        # validates the DeepL glossary
    python scripts/translation.py --dry-run   # characters to send to DeepL + cached translations made without the glossary
@@ -128,7 +129,7 @@ Every file is described in [docs/project_structure.md](docs/project_structure.md
    ```bash
    venv/bin/python -m pytest -q tests
    ```
-   64 tests, synthetic data only, no network and no key needed.
+   65 tests, synthetic data only, no network and no key needed.
 
 
 
