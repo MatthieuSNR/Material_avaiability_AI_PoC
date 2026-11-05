@@ -644,7 +644,7 @@ def clickable_stacked(data, notes, order, colors, title, xlabel, key, on_pick):
                                                            text="Label:N", color=alt.Color("Ink:N", scale=None))
     side = alt.Chart(notes).mark_text(align="left", dx=4, fontSize=10, color="#374151").encode(
         y=axis_y, x=alt.datum(100, scale=domain), text="Note:N")
-    chart = alt.layer(parts, labels, side).properties(title=_card_title(title), height=24 * len(order) + 40,
+    chart = alt.layer(parts, labels, side).properties(title=_card_title(title), height=max(24 * len(order) + 110, 170),
                                                       background="white", padding=CHART_PADDING)
     st.altair_chart(chart.configure_view(stroke=None), width="stretch", theme=None, key=key, on_select=on_pick,
                     selection_mode="pick")

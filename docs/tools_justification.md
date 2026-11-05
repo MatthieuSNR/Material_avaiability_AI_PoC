@@ -450,12 +450,12 @@ Each folder and file has a **clear purpose**, making the project **easy to maint
  | **No dependency on data or network** | The tests use a small synthetic table and a fake API client (`tests/test_cloud_summary.py`), so they run without Roche data, without a Mistral key and offline. |
  | **Simplicity**        | Plain functions with `assert`; `python -m pytest -q tests`. |
 
-### **What Is Tested** (65 tests)
+### **What Is Tested** (67 tests)
 - `tests/test_comment_cleaning.py` (23): journal entries and signatures (chains, typos, signature in a line, `n/a`), snapshot merge (partial week skipped), one row per comment without login, abbreviations by language and on the real library, a meaning that another row would expand again, entry-by-entry translation, `Comment_EN` taken from the cache when the cleaned file is saved (DeepL never called).
 - `tests/test_glossary.py` (10): validation of the glossary, whole-word case-sensitive matching, glossary created once and reused, fallback without glossary, forced terms (also at the start of a sentence), stale translations redone only on request.
 - `tests/test_pseudonymise.py` (7): identifying elements, quantities and prices are replaced and restored; the same value gets the same placeholder.
 - `tests/test_cloud_summary.py` (8): the request of the Smart Analysis contains no real supplier, MRP controller, purchasing group, material number or e-mail; aliases of the streamed answer are replaced by the real names; the filters are known and trivial statistics dropped; an invented alias becomes a neutral label; no asterisk in the rendered analysis.
-- `tests/test_insights.py` (17): grouping rules (case, containment, root cause, meaning, opposite meanings), journal entries, tracking table, status change, root cause × impact and status, stakeholders merged, weak signals (phrases, context, model), filters of the Lab, embedding cache, a chart drawn once for the same data.
+- `tests/test_insights.py` (19): grouping rules (case, containment, root cause, meaning, opposite meanings), journal entries, tracking table, status change, root cause × impact and status, stakeholders merged, weak signals (phrases, context, model), filters of the Lab, embedding cache, a chart drawn once for the same data.
 
 ### **Limits**
 The tests do not call the real DeepL or Mistral API and do not evaluate the quality of the translation or of the analysis; the detection limits of section 5 (abbreviated names, person names) are not covered. The look of the dashboard (CSS, browser-side switches) is checked by hand in a browser, not by tests.

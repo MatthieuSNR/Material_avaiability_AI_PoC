@@ -9,7 +9,7 @@ of the dashboard sections Root Cause Trends, Impact by Root Cause and Weak Signa
   root cause, an impact, a comment, or the status Actual / Potential Stock Out.
 
 A material has several order lines per day (up to 70): they are summarised per item and day as
-  MATERIAL_STATUS  the worst status of the lines (Actual > Potential > Below Safety > Good Part),
+  MATERIAL_STATUS  the worst status of ALL the lines of the item that day (Actual > Potential > Below > Good Part),
   Root_Cause       a root cause entered on one of the lines,
   Impact_Level     the most severe impact entered (Market > Production > Logistics > None (no impact));
                    empty = impact not communicated (which does not mean that there is no impact),
@@ -71,13 +71,16 @@ def build_tracking(merged):
     df = df.sort_values(key + ["_status", "_impact"], kind="stable")
     grouped = df.groupby(key, sort=False, dropna=False)
     out = grouped.agg(
-        MATERIAL_STATUS=("MATERIAL_STATUS", "first"), Root_Cause=("Root_Cause", "first"),
+        Root_Cause=("Root_Cause", "first"),
         Comment=("Comment", "first"), VENDOR_NAME=("VENDOR_NAME", "first"),
         MATERIAL_DESC=("MATERIAL_DESC", "first"), MRP_CONTROLLER=("MRP_CONTROLLER", "first"),
         PURCHASING_GROUP=("PURCHASING_GROUP", "first"), PLANT=("PLANT", "first"), N_Lines=("Snapshot_Date", "size"),
     )
     impact = df.sort_values(key + ["_impact"], kind="stable").groupby(key, sort=False, dropna=False)["Impact_Level"].first()
-    out = out.join(impact).reset_index()
+    # worst status of ALL the lines of the item that day, also those without comment or root cause
+    rank = merged["MATERIAL_STATUS"].map(STATUS_RANK).fillna(9)
+    status = merged.assign(_status=rank).sort_values("_status", kind="stable").groupby(key, sort=False, dropna=False)["MATERIAL_STATUS"].first()
+    out = out.join(impact).join(status).reset_index()
     return out.sort_values(key, kind="stable").reset_index(drop=True)
 
 

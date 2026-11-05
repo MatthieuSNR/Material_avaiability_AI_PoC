@@ -228,3 +228,20 @@ def test_last_snapshot_keeps_all_lines_and_a_material_counts_once():
     assert len(current) == 3 and "Comment" not in current and current["Commented"].sum() == 1   # uncommented lines stay
     assert current["Impact_Level"].dropna().tolist() == ["Production"]
     assert tr.material_status(current).to_dict() == {1: "Actual Stock Out", 2: "Below Safety"}
+
+
+def test_tracking_status_is_the_worst_of_all_the_lines_also_uncommented():
+    lines = pd.DataFrame({
+        "Snapshot_Date": ["2026-09-20"] * 2, "MATERIAL_NUMBER": [1, 1], "VENDOR_ACCOUNT_NUMBER": [10, 10],
+        "MATERIAL_STATUS": ["Good Part", "Below Safety"], "Root_Cause": ["S_Planning Issue", None], "Impact": [None, None],
+        "Comment": ["text", None], "VENDOR_NAME": ["V", "V"], "MATERIAL_DESC": ["A", "A"], "MRP_CONTROLLER": ["C", "C"],
+        "PURCHASING_GROUP": ["P", "P"], "PLANT": [1, 1]})
+    row = tr.build_tracking(lines).iloc[0]
+    assert row["MATERIAL_STATUS"] == "Below Safety" and row["N_Lines"] == 1
+
+
+def test_root_cause_impact_works_with_one_root_cause_selected():
+    items = pd.DataFrame({"Snapshot_Date": ["2026-09-20"] * 2, "MATERIAL_NUMBER": [1, 2], "VENDOR_ACCOUNT_NUMBER": [10, 10],
+                          "Root_Cause": ["S_OoS Delay"] * 2, "Impact_Level": ["Production"] * 2, "MATERIAL_STATUS": ["Actual Stock Out"] * 2})
+    table, per_cause, test = ins.root_cause_impact(items)
+    assert test["chi2"] is None and per_cause.iloc[0]["% severe"] == 100

@@ -295,7 +295,9 @@ def root_cause_impact(tracking, min_items=5):
     """Contingency table root cause x impact (items), the chi-square test of independence on the items whose impact was communicated,
     Cramér's V, and per root cause: share of severe impacts (Production + Market) among the items whose
     impact was communicated (items without impact entered are left out: their impact is unknown),
-    lift vs all root causes and Fisher's exact test (this root cause vs the others)."""
+    lift vs all root causes and Fisher's exact test (this root cause vs the others). With too few items for the
+    chi-square test (e.g. one root cause selected), the test gives chi2 = None and the rest still works; without any
+    communicated impact: ValueError."""
     from scipy.stats import chi2_contingency, fisher_exact
 
     pairs = item_root_cause_impact(tracking)
@@ -303,9 +305,13 @@ def root_cause_impact(tracking, min_items=5):
     assessed = table.drop(columns=NOT_COMMUNICATED)
     tested = assessed[assessed.sum(axis=1) >= min_items]
     tested = tested.loc[:, tested.sum() > 0]
-    chi2, p, dof, _ = chi2_contingency(tested)
+    if not assessed.to_numpy().sum():
+        raise ValueError("no communicated impact")
     n = tested.to_numpy().sum()
-    cramers_v = float(np.sqrt(chi2 / (n * (min(tested.shape) - 1))))
+    chi2, p, dof, cramers_v = None, float("nan"), 0, None
+    if min(tested.shape) >= 2:
+        chi2, p, dof, _ = chi2_contingency(tested)
+        chi2, cramers_v = round(float(chi2), 1), round(float(np.sqrt(chi2 / (n * (min(tested.shape) - 1)))), 2)
 
     severe = assessed[SEVERE_IMPACTS].sum(axis=1)
     total_assessed = assessed.sum(axis=1)
@@ -321,7 +327,7 @@ def root_cause_impact(tracking, min_items=5):
                      "Lift": round(s / a / base, 2) if a and base else np.nan,
                      "p-value": round(p_cause, 4) if a else np.nan})
     per_cause = pd.DataFrame(rows).sort_values(["p-value", "Items"], ascending=[True, False]).reset_index(drop=True)
-    test = {"chi2": round(float(chi2), 1), "dof": int(dof), "p": float(p), "cramers_v": round(cramers_v, 2),
+    test = {"chi2": chi2, "dof": int(dof), "p": float(p), "cramers_v": cramers_v,
             "n_items": int(n), "n_causes": len(tested), "severe_base_pct": round(base * 100, 1)}
     return table, per_cause, test
 

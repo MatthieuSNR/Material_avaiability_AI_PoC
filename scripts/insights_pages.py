@@ -25,12 +25,17 @@ import streamlit as st
 
 import insights as ins
 import ui
-from tracking import CURRENT_PATH, TRACKING_PATH
+from tracking import CURRENT_PATH, STATUS_RANK, TRACKING_PATH
 
 IMPACT_COLORS = {"Market": "#9B1C1C", "Production": "#E0443A", "Logistics": "#F5C518", "None (no impact)": "#2FA84F"}
 SIGNIFICANT = 0.05
 
 UNMERGED = "Unmerged comments"   # option of Most Frequent Comments: nothing grouped
+
+# Timeframe, in the Options of each section. A comment or an item is in the period if it was visible during it.
+LAST_SNAPSHOT = "Last snapshot"   # first choice of Top Root Causes
+TIMEFRAMES = ["All snapshots", "Last 4 weeks", "Last 8 weeks", "Last 16 weeks", "Custom period"]
+TIMEFRAME_KEYS = ["tf_top", "tf_frequent", "tf_trends", "tf_impact", "tf_watchlist", "tf_smart"]
 
 # Column "times the rate of the whole selection" (the reference of every comparison: all the items of the
 # selection, i.e. the sidebar filters and the timeframe)
@@ -75,6 +80,40 @@ def load_current():
     if not os.path.exists(CURRENT_PATH):
         return None
     return _with_labels(pd.read_csv(CURRENT_PATH))
+
+
+def timeframe_option(panel, key, choices=TIMEFRAMES):
+    """The timeframe of a section, chosen in its Options: returns (choice, period); period = (start, end), or None
+    for all the snapshots (and for LAST_SNAPSHOT). One day: a custom period that starts and ends on that day."""
+    tracking = load_tracking()
+    first, last = tracking["Snapshot_Date"].min(), tracking["Snapshot_Date"].max()
+    choice = panel.selectbox("Timeframe:", choices, key=key,
+                             help="Which snapshots this section looks at. For a month, a quarter or one day: Custom period.")
+    if choice == "Custom period":
+        dates = panel.date_input("Date range:", value=(first.date(), last.date()), min_value=first.date(),
+                                 max_value=last.date(), key=f"{key}_dates")
+        if isinstance(dates, tuple) and len(dates) == 2:   # a tuple of two only when BOTH dates are selected
+            return choice, (pd.to_datetime(dates[0]), pd.to_datetime(dates[1]) + pd.Timedelta(days=1) - pd.Timedelta(seconds=1))
+    elif choice.split()[1].isdigit():   # "Last 4 weeks"
+        return choice, (last - pd.Timedelta(weeks=int(choice.split()[1])), last)
+    return choice, None
+
+
+def comments_in_period(comments, period):
+    """The comments visible at least once during the period ([First_Seen, Last_Seen] overlaps it)."""
+    if period is None:
+        return comments
+    return comments[(comments["Last_Seen"] >= period[0]) & (comments["First_Seen"] <= period[1])]
+
+
+def status_of_materials(comments, tracking):
+    """The status of the material of each comment on the last day it was visible: the worst of all its lines that
+    day, as in the tiles of the Overview. A comment row of the file only knows the status of one line."""
+    rank = tracking["MATERIAL_STATUS"].map(STATUS_RANK).fillna(9)
+    worst = (tracking.assign(_rank=rank).sort_values("_rank", kind="stable")
+             .groupby(["Snapshot_Date", "MATERIAL_NUMBER"])["MATERIAL_STATUS"].first())
+    keys = pd.MultiIndex.from_arrays([comments["Last_Seen"], comments["MATERIAL_NUMBER"]])
+    return pd.Series(worst.reindex(keys).to_numpy(), index=comments.index).fillna(comments["MATERIAL_STATUS"])
 
 
 def label_key(label):
@@ -163,10 +202,6 @@ def insights_box(lines):
         st.success("\n\n".join(lines))
 
 
-def _missing_tracking():
-    st.warning("The tracking table is missing. Build it from the snapshots: `python scripts/tracking.py` (about 20 s).")
-
-
 @st.cache_resource(show_spinner="Loading the language model (first time only)...")
 def _embedding_model():
     from sentence_transformers import SentenceTransformer
@@ -208,6 +243,8 @@ def _pick_segment(chart_key, cause_filter, part_filter):
 def frequent_comments_section(filtered_df, selection_name, unmerged_table):
     """unmerged_table() draws the comments one by one (option 'Unmerged comments')."""
     settings, columns_panel = options_with_columns("frequent-comments", "Most Frequent Comments — " + selection_name)
+    _, period = timeframe_option(settings, "tf_frequent")
+    filtered_df = comments_in_period(filtered_df, period)
     method_label = settings.selectbox("Group comments with a similar:",
                                 ["Wording (characters)", "Meaning (language model)", UNMERGED],
                                 key="lab_method",
@@ -216,7 +253,7 @@ def frequent_comments_section(filtered_df, selection_name, unmerged_table):
                                      "'No stockout detected' / 'No stockout apparent'. Unmerged comments: every "
                                      "comment on its own line, nothing grouped.")
     if method_label == UNMERGED:
-        return unmerged_table(columns_panel)
+        return unmerged_table(columns_panel, filtered_df)
     top_n = int(settings.selectbox("Select a view:", ["Top 10", "Top 20", "Top 50"], key="lab_top").split()[1])
     method = "meaning" if method_label.startswith("Meaning") else "chars"
     threshold = settings.slider("How similar to be grouped:", 0.40, 0.95, ins.METHODS[method], 0.05, key=f"lab_threshold_{method}",
@@ -299,13 +336,12 @@ def _trend_chart(weekly, by, selection_name):
     return fig
 
 
-def page_trends(tracking, selection_name):
-    if tracking is None:
-        ui.section("trends", "Root Cause Trends — " + selection_name)
-        return _missing_tracking()
+def page_trends(df, selections, selection_name):
     panel = options("trends", "Root Cause Trends — " + selection_name)
+    _, period = timeframe_option(panel, "tf_trends")
+    tracking = _tracking(df, selections, period)[1]
     explain("How many items (a material from a vendor) carried each root cause, week by week, over the timeframe "
-            "chosen in the sidebar. Every snapshot row counts, also the ones without a comment.\n\n"
+            "chosen in the Options. Every snapshot row counts, also the ones without a comment.\n\n"
             "A rising line = a cause that concerns more and more items.")
     if tracking.empty:
         st.info("No data for the current filters and timeframe.")
@@ -375,11 +411,10 @@ def _status_change(tracking):
 
 
 # ------------------------------------------------------------------ page 3
-def page_cause_impact(tracking, selection_name):
-    if tracking is None:
-        ui.section("cause-impact", "Impact by Root Cause — " + selection_name)
-        return _missing_tracking()
+def page_cause_impact(df, selections, selection_name):
     panel = options("cause-impact", "Impact by Root Cause — " + selection_name)
+    _, period = timeframe_option(panel, "tf_impact")
+    tracking = _tracking(df, selections, period)[1]
     explain("**Which root causes lead to which impact?** For every item (a material from a vendor) of the timeframe: "
             "its root cause(s), the most severe impact planning communicated for it, and its material status.\n\n"
             "Impact levels, from the most severe: **Market** > **Production** > **Logistics** > **None** (planning "
@@ -401,10 +436,10 @@ def page_cause_impact(tracking, selection_name):
                             help="Beyond this number, the charts keep the root causes that most often and least often "
                                  "lead to a severe impact (half each), so that a chart fits on the screen. The table "
                                  "under the charts lists them all.")
-    shown = per_cause[per_cause["Impact communicated"] >= min_items].sort_values("% severe", ascending=False)
-    if shown.empty:
-        st.info("No root cause reaches this minimum; lower it.")
-        return
+    shown = per_cause[per_cause["Impact communicated"] >= min_items]
+    if shown.empty:   # a narrow selection (e.g. after a click on a chart): show what there is
+        shown = per_cause[per_cause["Impact communicated"] > 0]
+    shown = shown.sort_values("% severe", ascending=False)
 
     # --- main findings in plain words (shown under the impact chart)
     base = test["severe_base_pct"]
@@ -426,7 +461,7 @@ def page_cause_impact(tracking, selection_name):
     charted = shown if len(shown) <= max_bars else pd.concat([shown.head(max_bars // 2), shown.tail(max_bars // 2)])
     order = charted["Root cause"].tolist()
     impact_label = f"Impact communicated per {by.lower()}"
-    status_label = f"Material status communicated per {by.lower()}"
+    status_label = f"Material status per {by.lower()}"
     cause_filter = "f_root_cause" if by == "Root cause" else "f_stakeholder"
     if len(charted) < len(shown):
         st.caption(f"The chart shows the {max_bars // 2} {by.lower()}s that most often and the {max_bars // 2} that "
@@ -446,7 +481,8 @@ def page_cause_impact(tracking, selection_name):
                              "% of the items with a communicated impact", key,
                              partial(_pick_segment, key, cause_filter, "f_impact"))
         st.caption(f"Click a segment to filter the dashboard on this {by.lower()} and this impact.")
-        insights_box(lines)
+        if len(shown) > 1:   # one bar left (e.g. after a click): nothing to compare it with
+            insights_box(lines)
         explain("Each bar = 100% of the items of a root cause whose impact was communicated. **Dark red "
                 "and red** = severe impacts (Market, Production); **green** = no impact.\n\n"
                 "The root causes at the **top** most often lead to a severe impact. **★** = the difference "
@@ -479,6 +515,10 @@ def page_cause_impact(tracking, selection_name):
                          LIFT: st.column_config.NumberColumn(help=HELP["lift"]),
                          "Significant": st.column_config.TextColumn(help=HELP["significant"]),
                          "p-value": st.column_config.NumberColumn(format="%.4f", help=HELP["p"])})
+        if test["chi2"] is None:
+            st.markdown("**Are root cause and impact linked?** Too few root causes or impacts in this selection for "
+                        "the chi-square test: widen the filters.")
+            return
         significant = test["p"] < SIGNIFICANT
         strength = "weak" if test["cramers_v"] < 0.2 else "moderate" if test["cramers_v"] < 0.4 else "strong"
         st.markdown(
@@ -574,11 +614,11 @@ def _top_share(items, share=0.1):
     return n_top, top["Severe_later"].mean() * 100, found
 
 
-def page_watchlist(tracking, tracking_filtered, comments_en, selection_name, period=None):
-    if tracking is None:
-        ui.section("watchlist", "Watchlist — " + selection_name)
-        return _missing_tracking()
-    _, columns_panel = options_with_columns("watchlist", "Watchlist — " + selection_name)
+def page_watchlist(df, selections, selection_name):
+    settings, columns_panel = options_with_columns("watchlist", "Watchlist — " + selection_name)
+    _, period = timeframe_option(settings, "tf_watchlist")
+    tracking, tracking_filtered = _tracking(df, selections, period)
+    comments_en = st.session_state["_comments_en"]
     all_items, model = weak_signals(tracking, comments_en)
     in_scope = set(map(tuple, tracking_filtered[ins.ITEM].drop_duplicates().to_numpy()))
     items = all_items[[(m, v) in in_scope for m, v in zip(all_items["MATERIAL_NUMBER"], all_items["VENDOR_ACCOUNT_NUMBER"])]]
@@ -812,19 +852,6 @@ def _tracking(df, selections, period):
     the tables. (None, None) when the table was not built."""
     st.session_state["_comments_en"] = dict(zip(df["Comment"], df["Comment_EN"]))
     return load_tracking(), filtered_tracking(selections, period)
-
-
-def trends_section(df, selections, selection_name, period=None):
-    page_trends(_tracking(df, selections, period)[1], selection_name)
-
-
-def impact_section(df, selections, selection_name, period=None):
-    page_cause_impact(_tracking(df, selections, period)[1], selection_name)
-
-
-def watchlist_section(df, selections, selection_name, period=None):
-    tracking, tracking_filtered = _tracking(df, selections, period)
-    page_watchlist(tracking, tracking_filtered, st.session_state["_comments_en"], selection_name, period)
 
 
 # ------------------------------------------------------------------ context for the Smart Analysis (LLM)

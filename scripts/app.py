@@ -5,7 +5,8 @@ One page, in the order of the menu:
   Overview (status tiles, Top Root Causes: all the order lines of the last snapshot) · Most Frequent Comments* ·
   Root Cause Trends* · Impact by Root Cause* · Watchlist* · Smart Analysis (the analysis and its key statistics)
   (* drawn by scripts/insights_pages.py from data/item_tracking.csv; the others here, with scripts/stats_engine.py)
-Also: password page (APP_PASSWORD in .env), sidebar filters + timeframe + saved views, which apply to every section.
+Also: password page (APP_PASSWORD in .env), sidebar filters and saved views, which apply to every section; a timeframe
+in the Options of each section.
 Look and components (menu, switches, charts, tables, loading screen) are in scripts/ui.py.
 """
 import streamlit as st
@@ -198,7 +199,7 @@ def apply_view():
         for key in FILTER_KEYS:
             st.session_state[key] = view.get(key, [])
         set_columns(view.get("table_columns", DEFAULT_COLUMNS))
-        st.session_state["timeframe"] = view.get("timeframe", "All snapshots")
+        st.session_state.update(view.get("timeframes", {}))
 
 
 def save_view():
@@ -207,7 +208,8 @@ def save_view():
         views = load_views()
         views[name] = {key: st.session_state.get(key, []) for key in FILTER_KEYS}
         views[name]["table_columns"] = shown_columns()
-        views[name]["timeframe"] = st.session_state.get("timeframe", "All snapshots")
+        views[name]["timeframes"] = {key: st.session_state[key] for key in insights_pages.TIMEFRAME_KEYS
+                                     if key in st.session_state}
         os.makedirs(os.path.dirname(VIEWS_PATH), exist_ok=True)
         with open(VIEWS_PATH, "w") as f:
             json.dump(views, f, indent=2, ensure_ascii=False)
@@ -223,7 +225,7 @@ def delete_view():
     st.session_state["view_name"] = "—"
 
 
-# Sidebar: three menus that fold (Views, Filters, Timeframe), so all filters fit without scrolling.
+# Sidebar: two menus that fold (Views, Filters), so all filters fit without scrolling.
 # Fixed titles: a title that changes would make Streamlit re-create (and close) the menu.
 with st.sidebar.expander("Views", expanded=False):
     st.selectbox("Saved view:", ["—"] + sorted(load_views()), key="view_name", on_change=apply_view,
@@ -243,6 +245,10 @@ with st.sidebar.expander("Views", expanded=False):
 FILTER_COLUMNS = ["MRP_CONTROLLER", "PURCHASING_GROUP", "VENDOR_LABEL", "MATERIAL_LABEL", "Stakeholder", "Root_Cause",
                   "Impact_Level"]
 tracking_all, current_all = insights_pages.load_tracking(), insights_pages.load_current()
+if tracking_all is None or current_all is None:
+    st.warning("Tracking table not built yet: run `python scripts/tracking.py`.")
+    st.stop()
+df["MATERIAL_STATUS"] = insights_pages.status_of_materials(df, tracking_all)
 
 
 @st.cache_resource
@@ -285,33 +291,6 @@ selected_status = filters_box.multiselect("Material Status (today)", ui.STATUS_O
                                           help="The materials in this status on the last snapshot, with their history.")
 
 
-# --- Timeframe filter (Part A: record the user's choice only) ---
-timeframe_box = st.sidebar.expander("Timeframe", expanded=False)
-timeframe_option = timeframe_box.selectbox(
-    "Select period:",
-    ["All snapshots", "Last 4 weeks", "Last 8 weeks", "Last 16 weeks", "Custom period"],
-    key="timeframe",
-)
-
-# If "Custom period" is selected, show a date range picker
-start_ts, end_ts = None, None
-if timeframe_option == "Custom period":
-    min_date = df["First_Seen"].min().date()
-    max_date = df["Last_Seen"].max().date()
-    date_range = timeframe_box.date_input(
-        "Date range:",
-        value=(min_date, max_date),
-        min_value=min_date,
-        max_value=max_date,
-    )
-    # date_input returns a tuple only when BOTH dates are selected
-    if isinstance(date_range, tuple) and len(date_range) == 2:
-        start_ts = pd.to_datetime(date_range[0])
-        end_ts = pd.to_datetime(date_range[1])
-timeframe_box.caption("For the analyses over time (comments, trends, statistics, impact, watchlist): a comment is in "
-                      "the period if it was visible at least once during it. The Overview always shows the last snapshot.")
-
-
 # Filter data
 filtered_df = df.copy()
 for column, selected in [("MRP_CONTROLLER", selected_mrp), ("PURCHASING_GROUP", selected_pgroup),
@@ -323,28 +302,6 @@ for column, selected in [("VENDOR_LABEL", selected_vendor_label), ("MATERIAL_LAB
     if selected:   # on the number: a description can change from one snapshot to the next
         keys = {insights_pages.label_key(v) for v in selected}
         filtered_df = filtered_df[filtered_df[column].map(insights_pages.label_key).isin(keys)]
-
-# --- Timeframe filter (Part B: apply the choice to filtered_df) ---
-# A comment stays visible for many days: keep it if [First_Seen, Last_Seen] overlaps the period.
-# PERIOD = (start, end) of the timeframe, or None for all snapshots: it also limits the weeks of the trend
-# charts (a comment visible for months would otherwise stretch the chart beyond the period).
-PERIOD = None
-if timeframe_option == "Custom period":
-    if start_ts is not None:
-        PERIOD = (start_ts, end_ts + pd.Timedelta(days=1) - pd.Timedelta(seconds=1))
-    if start_ts is not None:
-        filtered_df = filtered_df[
-            (filtered_df["Last_Seen"] >= start_ts)
-            & (filtered_df["First_Seen"] <= end_ts)
-        ]
-elif timeframe_option.startswith("Last"):
-    weeks = int(timeframe_option.split(" ")[1])
-    latest_snapshot = df["Last_Seen"].max()
-    cutoff = latest_snapshot - pd.Timedelta(weeks=weeks)
-    filtered_df = filtered_df[filtered_df["Last_Seen"] >= cutoff]
-    PERIOD = (cutoff, latest_snapshot)
-# "All snapshots" → no filtering needed
-
 
 # Name of the current selection, used in chart titles
 def selection_label(values, short=False):
@@ -367,9 +324,6 @@ LAB_SELECTIONS = {"MRP_CONTROLLER": selected_mrp, "PURCHASING_GROUP": selected_p
 
 # Material Status filter: the materials in this status TODAY (worst status of their lines on the last snapshot, as in the
 # tiles), in every section. The tiles keep the counts of all the statuses, so that another one can be chosen.
-if current_all is None:
-    st.warning("Last snapshot not built yet: run `python scripts/tracking.py`.")
-    st.stop()
 current_df = insights_pages.filter_tracking(current_all, LAB_SELECTIONS)
 statuses = material_status(current_df).replace("Unknown Status (Good Part)", "Good Part")
 tile_counts, tile_total = statuses.value_counts().to_dict(), len(statuses)
@@ -379,12 +333,9 @@ if selected_status:
     current_df = current_df[current_df["MATERIAL_NUMBER"].isin(statuses.index)]
     filtered_df = filtered_df[filtered_df["MATERIAL_NUMBER"].isin(statuses.index)]
 
-# Compute all statistics ONCE (used by all sections and the AI Summary)
-stats = compute_stats(filtered_df, df)
-
 # ================= OVERVIEW =================
 # What the dashboard shows today: ALL the order lines of the last snapshot, with or without comment, root cause or
-# impact. The timeframe does not apply here; the other sections use the whole history.
+# impact. The tiles always show it; the timeframe of Top Root Causes can reach back in the history.
 overview_name = " / ".join(selection_parts) if selection_parts else "All materials"
 ui.section("overview", "Overview — " + overview_name)
 n_materials, n_all_materials = len(statuses), current_all["MATERIAL_NUMBER"].nunique()
@@ -410,7 +361,7 @@ def pick_status(status):
 ui.status_tiles(tile_counts, tile_total, selected_status, pick_status)
 st.caption("Click a tile to focus the whole dashboard on the materials in this status today; click it again to remove "
            "the filter. A material counts once, whatever its number of purchase orders and lines, with the worst "
-           "status of its lines. The timeframe does not change the Overview; the other sections use the history.")
+           "status of its lines.")
 ui.status_definitions()
 
 # --- Sections: all analyses follow each other on one page (menu at the top to jump) ---
@@ -421,13 +372,14 @@ tab2, tab3, tab5, tab_impact, tab_signals, tab7 = [st.container() for _ in range
 
 # ================= Comments one by one (option "Unmerged comments" of Most Frequent Comments) =================
 
-def unmerged_comments(columns_panel):
+def unmerged_comments(columns_panel, comments):
     # "▥ Columns": in the Options of the section (ui.column_picker).
     # Same state as before (col_order / col_visible), so the saved views keep their columns.
     shown = ui.table_toolbar("col", list(TABLE_COLUMNS.values()), DEFAULT_COLUMNS, panel=columns_panel, order_key="col_order",
                              visible_key="col_visible", checkbox_prefix="cb_") or DEFAULT_COLUMNS
+    st.markdown('<div style="height: 14px"></div>', unsafe_allow_html=True)   # the toolbar of the table stays under Options
     to_data = {v: k for k, v in TABLE_COLUMNS.items()}
-    table_df = filtered_df.sort_values("Last_Seen", ascending=False)[[to_data[c] for c in shown]] \
+    table_df = comments.sort_values("Last_Seen", ascending=False)[[to_data[c] for c in shown]] \
         .rename(columns=TABLE_COLUMNS)
     for text_col in ["Comment (EN)", "Original comment", "Comment (expanded)"]:
         if text_col in table_df:
@@ -437,15 +389,15 @@ def unmerged_comments(columns_panel):
             table_df[date_col] = pd.to_datetime(table_df[date_col], errors="coerce").dt.strftime("%Y-%m-%d")
     st.dataframe(
         table_df,
-        width="stretch",
-        height=500,
+        width="stretch",   # no fixed height: a fixed one would stay in the fullscreen view
         column_config={
             "Comment (EN)": st.column_config.TextColumn(width="large"),
             "Original comment": st.column_config.TextColumn(width="large"),
         },
         hide_index=True,
     )
-    st.caption("One row = one comment on one material of one vendor. "
+    st.caption("One row = one comment on one material of one vendor. Material Status = the worst status of the lines of "
+               "the material on the last day the comment was visible. "
                "'Days visible' = for how many days the comment stayed in the dashboard. "
                f"A comment with several entries (journal) shows them one after the other, separated by '{ENTRY_MARK.strip()}'.")
 
@@ -461,8 +413,15 @@ with tab2:
         """One row per material and root cause: a material counts once per cause, whatever its number of lines."""
         return lines.dropna(subset=["Root_Cause"]).drop_duplicates(["MATERIAL_NUMBER", "Root_Cause"])
 
-    cause_rows, all_cause_rows = with_cause(current_df), with_cause(current_all)
     with ui.section_with_options("top-root-causes", "Top Root Causes"):
+        # By default what the dashboard shows today; a longer timeframe merges the snapshots of the period
+        top_timeframe, top_period = insights_pages.timeframe_option(
+            st, "tf_top", [insights_pages.LAST_SNAPSHOT] + insights_pages.TIMEFRAMES)
+        if top_timeframe == insights_pages.LAST_SNAPSHOT:
+            cause_rows, all_cause_rows = with_cause(current_df), with_cause(current_all)
+        else:
+            cause_rows = with_cause(insights_pages.filtered_tracking(LAB_SELECTIONS, top_period))
+            all_cause_rows = with_cause(insights_pages.filtered_tracking({}, top_period))
         top_n_causes = st.selectbox("Select a view:", options=["Top 5", "Top 10", "Top 20"], key="radio_top_causes")
         cause_view = st.radio(
             "Root causes:", [AS_ENTERED, MERGED, ONE_STAKEHOLDER], key="top_causes_view", horizontal=True,
@@ -493,13 +452,15 @@ with tab2:
 
     causes, all_causes = causes_of(cause_rows), causes_of(all_cause_rows)
     view_label = {MERGED: " (stakeholders merged)", ONE_STAKEHOLDER: f" ({chosen_stakeholder})"}.get(cause_view, "")
+    if top_timeframe != insights_pages.LAST_SNAPSHOT:
+        view_label += f", {top_timeframe.lower()}"
     n_with_cause = cause_rows["MATERIAL_NUMBER"].nunique()
 
     # Count root causes in the FILTERED data (respects all filters)
     root_cause_counts = causes.value_counts().head(n_causes)
 
     if root_cause_counts.empty:
-        st.info("No root cause on the last snapshot for the current filters.")
+        st.info("No root cause for the current filters and timeframe.")
     else:
         # Colours of the bars: green (low) -> yellow -> orange -> red (high), by count relative to the max
         colormap = mcolors.LinearSegmentedColormap.from_list(
@@ -526,12 +487,15 @@ with tab2:
         # filters: a new chart has no bar selected, so the same bar can be clicked again later.
         col_bar, col_pie = st.columns([3, 2], gap="medium")
         chart_height = max(260, len(root_cause_counts) * 24)
-        chart_id = hash(repr((LAB_SELECTIONS, cause_view, n_causes, chosen_stakeholder)))
+        chart_id = hash(repr((LAB_SELECTIONS, cause_view, n_causes, chosen_stakeholder, top_timeframe, top_period)))
         with col_bar:
             ui.clickable_bars(bars, ui.chart_title(f"Top Root Causes{view_label}", overview_name, 60),
                               chart_height, f"bars_{chart_id}", partial(pick_root_cause, f"bars_{chart_id}", cause_view == MERGED))
-            st.caption(f"Click a bar to filter the dashboard on this root cause. {n_with_cause} of the {n_materials:,} "
-                       "materials of the last snapshot have a root cause; % = share of these materials.")
+            st.caption("Click a bar to filter the dashboard on this root cause. "
+                       + (f"{n_with_cause} of the {n_materials:,} materials of the last snapshot have a root cause"
+                          if top_timeframe == insights_pages.LAST_SNAPSHOT else
+                          f"{n_with_cause} materials had a root cause in this timeframe (snapshots merged)")
+                       + "; % = share of these materials.")
         with col_pie:
             ui.clickable_pie(slices, ui.chart_title(f"Root Cause Share{view_label}", overview_name, 42), chart_height,
                              f"pie_{chart_id}", partial(pick_root_cause, f"pie_{chart_id}", cause_view == MERGED))
@@ -565,7 +529,7 @@ with tab3:
     insights_pages.frequent_comments_section(filtered_df, selection_name, unmerged_comments)
 
 with tab5:
-    insights_pages.trends_section(df, LAB_SELECTIONS, selection_name, PERIOD)
+    insights_pages.page_trends(df, LAB_SELECTIONS, selection_name)
 
 
 # ================= Key statistics: the figures the Smart Analysis interprets (its second page) =================
@@ -797,14 +761,18 @@ def render_ai_summary(mode: str):
 
 # ================= Impact by Root Cause, Watchlist (scripts/insights_pages.py) =================
 with tab_impact:
-    insights_pages.impact_section(df, LAB_SELECTIONS, selection_name, PERIOD)
+    insights_pages.page_cause_impact(df, LAB_SELECTIONS, selection_name)
 
 with tab_signals:
-    insights_pages.watchlist_section(df, LAB_SELECTIONS, selection_name, PERIOD)
+    insights_pages.page_watchlist(df, LAB_SELECTIONS, selection_name)
 
 
 with tab7:
-    ui.section("ai-summary", SECTION_TITLES["ai-summary"])
+    # The last section: from here on the comments are those of its timeframe
+    timeframe_option, PERIOD = insights_pages.timeframe_option(
+        ui.section_with_options("ai-summary", SECTION_TITLES["ai-summary"]), "tf_smart")
+    filtered_df = insights_pages.comments_in_period(filtered_df, PERIOD)
+    stats = compute_stats(filtered_df, df)   # all the statistics ONCE (key statistics, Smart Analysis)
     analysis_page, statistics_page = st.tabs(["Smart Analysis", "Key statistics used"])
     with analysis_page:
         render_ai_summary("cloud" if config.ON_CLOUD else "local")  # localhost: LM Studio; Streamlit Cloud: Mistral API
