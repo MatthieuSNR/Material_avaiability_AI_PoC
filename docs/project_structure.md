@@ -43,7 +43,7 @@ Roche_AI_PoC/
 │   ├── llm_summary.py             # Smart Analysis: facts, prompt, Mistral API (deployed app) or LM Studio (on this Mac)
 │   │   # --- Dashboard
 │   ├── app.py                     # Streamlit dashboard: password page, sidebar filters and views, Overview, Filtered
-│   │                              #   Comments, Key Statistics, Smart Analysis; calls insights_pages for 4 sections
+│   │                              #   Comments, Smart Analysis and its key statistics; calls insights_pages for 4 sections
 │   ├── insights_pages.py          # Sections Most Frequent Comments, Root Cause Trends, Impact by Root Cause, Weak
 │   │                              #   Signals; context of the Smart Analysis (smart_context)
 │   ├── ui.py                      # Look and components: ION-like top bar and menu, section titles with Options,
@@ -84,7 +84,7 @@ Roche_AI_PoC/
 - **Data flow, comments**: `Snapshot_2026/` → `data_cleaning.py` (steps 1-6, with `entries.py`, `abbreviations.py` + `lexicon/abbreviations.csv`) → `cleaned_comments.csv` → `translation.py` (step 7, with `pseudonymise.py`, `glossary.py` + `lexicon/glossary_de_en.csv`, the cache) → `Comment_EN`.
 - **Data flow, items**: `Snapshot_2026/` → `tracking.py` → `item_tracking.csv` → `insights.py` → `insights_pages.py`.
 - **Dashboard**: `app.py` reads both files, applies the sidebar filters, draws its own sections with `stats_engine.py` and `ui.py`, and the four analysis sections with `insights_pages.py`; the Smart Analysis (`llm_summary.py`) receives the statistics and the findings of these sections (`smart_context`).
-- **Sections of the page, in the menu order**: Overview (with Top Root Causes; last snapshot only), Most Frequent Comments, Root Cause Trends, Key Statistics, Impact by Root Cause, Watchlist, Smart Analysis (always last).
+- **Sections of the page, in the menu order**: Overview (with Top Root Causes; last snapshot only), Most Frequent Comments, Root Cause Trends, Impact by Root Cause, Watchlist, Smart Analysis (always last; second page: the key statistics it uses).
 - **One function per cleaning step**, one notebook cell per step: the result of every step can be checked on its own. The notebooks call the functions of the scripts, they do not duplicate code.
 - **`stats_engine.py` and `insights.py` compute every figure**: the dashboard displays them and the LLM only receives them, so the LLM never computes anything.
 - **`lexicon/` vs `data/interim/`**: `lexicon/` holds the reference tables, versioned and free of real comments and supplier names (the GitHub repository is public); `data/interim/` holds files generated from the confidential data, never pushed.

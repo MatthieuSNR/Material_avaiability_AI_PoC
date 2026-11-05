@@ -3,7 +3,7 @@ Streamlit dashboard "Material Availability – Insights Lab" (run: venv/bin/stre
 
 One page, in the order of the menu:
   Overview (status tiles, Top Root Causes: all the order lines of the last snapshot) · Most Frequent Comments* ·
-  Root Cause Trends* · Key Statistics · Impact by Root Cause* · Watchlist* · Smart Analysis
+  Root Cause Trends* · Impact by Root Cause* · Watchlist* · Smart Analysis (the analysis and its key statistics)
   (* drawn by scripts/insights_pages.py from data/item_tracking.csv; the others here, with scripts/stats_engine.py)
 Also: password page (APP_PASSWORD in .env), sidebar filters + timeframe + saved views, which apply to every section.
 Look and components (menu, switches, charts, tables, loading screen) are in scripts/ui.py.
@@ -129,7 +129,6 @@ SECTIONS = [
     ("overview", "Overview"),
     ("frequent-comments", "Most Frequent Comments"),
     ("trends", "Root Cause Trends"),
-    ("key-statistics", "Key Statistics"),
     ("cause-impact", "Impact by Root Cause"),
     ("watchlist", "Watchlist"),
     ("ai-summary", "Smart Analysis"),   # always the last one
@@ -397,7 +396,7 @@ ui.status_definitions()
 
 # --- Sections: all analyses follow each other on one page (menu at the top to jump) ---
 # (Top Root Causes, tab2, is part of the Overview: its container comes first)
-tab2, tab3, tab5, tab6, tab_impact, tab_signals, tab7 = [st.container() for _ in range(7)]
+tab2, tab3, tab5, tab_impact, tab_signals, tab7 = [st.container() for _ in range(6)]
 
 
 
@@ -550,9 +549,10 @@ with tab5:
     insights_pages.trends_section(df, LAB_SELECTIONS, selection_name, PERIOD)
 
 
-# ================= SECTION 6: Key Statistics =================
-with tab6:
-    ui.section("key-statistics", SECTION_TITLES["key-statistics"])
+# ================= Key statistics: the figures the Smart Analysis interprets (its second page) =================
+def key_statistics():
+    st.caption("The figures of the current selection, computed from the data: the Smart Analysis receives them and "
+               "only interprets them.")
 
     # Handle the empty case first (avoid crashes on very narrow filters)
     if stats["total_comments"] == 0:
@@ -772,6 +772,8 @@ def render_ai_summary(mode: str):
             st.caption("Note: analysis generated with different filters.")
         ui.ai_result(saved[1], f"{saved[2]} · based on {saved[3]} comments · generated {saved[4]}"
                                + ("" if cloud else f" with {saved[5]} · figures computed by pandas"))
+    else:
+        ui.ai_outline()   # the five sections, before the first run
 
 
 # ================= Impact by Root Cause, Watchlist (scripts/insights_pages.py) =================
@@ -784,6 +786,10 @@ with tab_signals:
 
 with tab7:
     ui.section("ai-summary", SECTION_TITLES["ai-summary"])
-    render_ai_summary("cloud" if config.ON_CLOUD else "local")  # localhost: LM Studio; Streamlit Cloud: Mistral API
+    analysis_page, statistics_page = st.tabs(["Smart Analysis", "Key statistics used"])
+    with analysis_page:
+        render_ai_summary("cloud" if config.ON_CLOUD else "local")  # localhost: LM Studio; Streamlit Cloud: Mistral API
+    with statistics_page:
+        key_statistics()
 
 ui.page_end()  # room under Smart Analysis: the menu brings its title up under the menu too

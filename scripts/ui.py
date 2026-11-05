@@ -112,7 +112,7 @@ section[data-testid="stSidebar"] [data-baseweb="select"] > div > div:first-child
   box-shadow: 0 1px 2px rgba(0,0,0,.05); box-sizing: border-box;
 }}
 /* Table with a copy button on a column (copy_table) */
-.ion-table {{ max-height: 430px; overflow: auto; border: 1px solid #E5E7EB; border-radius: 6px; background: #fff; }}
+.ion-table {{ max-height: 430px; overflow: auto; border: 1px solid #E5E7EB; border-radius: {RADIUS}; background: #fff; }}
 .ion-table table {{ border-collapse: collapse; width: 100%; font-size: .82rem; margin: 0; }}
 .ion-table th {{ position: sticky; top: 0; z-index: 1; background: #F7F8FA; color: #6B7280; font-weight: 500;
   text-align: left; white-space: nowrap; padding: 7px 10px; border: 0; border-bottom: 1px solid #E5E7EB; }}
@@ -155,7 +155,7 @@ html, .main, [data-testid="stAppViewContainer"] {{ scroll-behavior: smooth; }}
 
 /* Square corners on the Streamlit widgets too */
 [data-baseweb="select"] > div, [data-baseweb="input"], [data-baseweb="popover"] ul, .stButton > button,
-.stDateInput > div > div, [data-testid="stExpander"] details, [data-testid="stDataFrame"],
+.stDateInput > div > div, [data-testid="stExpander"] details, [data-testid="stExpander"] summary, [data-testid="stDataFrame"],
 [data-testid="stDataFrameResizable"], [data-testid="stNotification"], [data-testid="stAlert"] > div {{
   border-radius: {RADIUS} !important;
 }}
@@ -256,6 +256,7 @@ div[data-testid="stPopoverBody"]:has(.section-options) {{ width: 640px; max-widt
 .ai-result ul {{ margin: 0 0 4px 0; padding-left: 22px; }}
 .ai-result li {{ margin: 4px 0; }}
 .ai-result p {{ margin: 6px 0; }}
+.ai-result p.hint {{ color: #6B7280; }}
 </style>
 """
 
@@ -903,6 +904,19 @@ def ai_result_html(text, meta, tools=True):
              '<a data-action="text">Download text</a></div>') if tools else ""
     return (f'<div class="ai-result"><div class="ai-body">{summary_to_html(text)}</div>'
             f'<div class="meta">{html.escape(meta)}</div>{links}</div>')
+
+
+AI_OUTLINE = {"Key findings": "The main facts of the selection.",
+              "What drives the issues": "The root causes, vendors and materials behind them.",
+              "Early warnings": "What may turn into an impact.",
+              "Risks to escalate": "What needs attention now.",
+              "Recommended actions": "What to do next, and who does it."}
+
+
+def ai_outline():
+    """The sections of the analysis, shown until it is run."""
+    body = "".join(f'<h4>{html.escape(name)}</h4><p class="hint">{html.escape(hint)}</p>' for name, hint in AI_OUTLINE.items())
+    st.markdown(f'<div class="ai-result"><div class="ai-body">{body}</div></div>', unsafe_allow_html=True)
 
 
 def ai_result(text, meta):
