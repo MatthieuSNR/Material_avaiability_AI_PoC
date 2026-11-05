@@ -1002,12 +1002,13 @@ def table_toolbar(key, columns, default=None, **state_keys):
 def copy_table(frame, copy_column, bar_column=None, wide=(), nowrap=()):
     """A table in HTML (st.dataframe cannot hold a button): each cell of copy_column has a 'Copy' button that puts
     its value in the clipboard, in the browser (no rerun). bar_column = a 0-100 score drawn as a bar; wide = long
-    texts, wrapped in a wider column; nowrap = columns on one line."""
+    texts, wrapped in a wider column; nowrap = columns on one line. A line break in a value is kept."""
     def cell(column, value):
-        text = "" if pd.isna(value) else html.escape(" ".join(str(value).split()))
+        lines = [] if pd.isna(value) else str(value).splitlines()
+        text = "<br>".join(html.escape(" ".join(line.split())) for line in lines)
         css = "wide" if column in wide else "nowrap" if column in (*nowrap, copy_column, bar_column) else ""
         if column == bar_column and text:
-            text = f'<span class="bar"><i style="width:{float(value):.0f}%"></i></span>{float(value):.0f}%'
+            text = f'<span class="bar"><i style="width:{float(value):.0f}%"></i></span>{float(value):.0f}'
         elif column == copy_column and text:
             text += f'<a class="ion-copy" href="#" data-copy="{text}">Copy</a>'
         return f'<td class="{css}">{text}</td>'

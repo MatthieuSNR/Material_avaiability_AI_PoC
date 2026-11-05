@@ -756,16 +756,18 @@ def _watch_list(items, tracking, model):
     watch = watch.sort_values("Risk", ascending=False).head(25)
     watch["Risk"] = (watch["Risk"] * 100).round(0)
     watch["Material number"] = watch["MATERIAL_NUMBER"].astype("int64").astype(str)
+    watch["Why"] = watch["Why"].str.replace(r", (?=vendor: |root cause: |status: |phrase )", "\n", regex=True)   # one per line
     table = watch[["Risk", "MATERIAL_DESC", "Material number", "Why", "Text", "VENDOR_NAME", "Root_Cause", "Status_now",
                    "Days since first comment", "MRP_CONTROLLER"]].rename(columns={
-        "MATERIAL_DESC": "Material", "Text": "First comment (EN)", "Root_Cause": "Root cause", "VENDOR_NAME": "Vendor",
+        "Risk": "Risk score", "MATERIAL_DESC": "Material", "Text": "First comment (EN)", "Root_Cause": "Root cause", "VENDOR_NAME": "Vendor",
         "Status_now": "Status now", "MRP_CONTROLLER": "MRP Controller"})
     # '▥ Columns' as on the other tables; the table is in HTML for the Copy button of the material number
     shown = ui.table_toolbar("t_watchlist", list(table.columns), list(table.columns))
-    ui.copy_table(table[shown], "Material number", bar_column="Risk", wide=("Why", "First comment (EN)"),
+    ui.copy_table(table[shown], "Material number", bar_column="Risk score", wide=("Why", "First comment (EN)"),
                   nowrap=("Material", "Status now", "MRP Controller"))
     st.caption(f"Items of the selection still visible on {last_day:%d.%m.%Y} with no Production / Market impact "
-               "communicated. Risk = score of the tool (0-100): it ranks the items, it is not a probability. "
+               "communicated. Risk score (0-100): it ranks the items from the most to the least at risk; it is not a "
+               "probability of impact. "
                "Why = the 3 elements that raise the risk most. Copy = the material number, to paste into SAP.")
 
 
