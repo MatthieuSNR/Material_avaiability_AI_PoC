@@ -14,7 +14,7 @@ This project aims to **extract actionable insights** for Roche’s planner comme
 - **Tracking table** (`data/item_tracking.csv`): one row per day and item from **all** snapshot rows (also without comment), for the trends, the impacts and the weak signals.
 - **Streamlit dashboard "Insights Lab"** (`scripts/app.py`): one page, a menu over the full width, a password page when shared. Sections: **Overview** (what the dashboard shows today: all the order lines of the last snapshot, a material counted once; clickable status tiles and top root causes that set the filters), **Most Frequent Comments** (similar wordings grouped, or the comments one by one with a column picker), **Root Cause Trends** (all snapshots, what changed between two weeks), **Impact by Root Cause**, **Watchlist** (open items at risk; the first entries, the context and the weights behind it are in the statistical details for analysts), **Smart Analysis** (two pages: the analysis and the key statistics it uses; LM Studio on this Mac, Mistral API pseudonymised once deployed; copy / Word / text export). Sidebar filters (MRP controller, purchasing group, vendor, material, stakeholder, root cause, impact, material status today) apply everywhere; each section has its timeframe in its Options (Top Root Causes: last snapshot by default, the others: all snapshots); saved views; PNG export of every chart; explanations and statistics folded for the analysts.
 - **Online access** (Streamlit Community Cloud): testers open the dashboard at a fixed link, behind a password; the data is pushed to GitHub only encrypted (`deploy/data.enc`).
-- **Tests**: 67 pytest tests on synthetic data, no network.
+- **Tests**: 69 pytest tests on synthetic data, no network.
 
 ## 🛠️ Tools & Libraries
 Versions installed in `venv` (Python 3.12.4); minimum versions in `requirements.txt`.
@@ -75,7 +75,7 @@ Roche_AI_PoC/
 │   ├── data_bundle.py           # Encrypted copy of the data for the deployed app (deploy/data.enc)
 │   ├── requirements.txt         # Dependencies of the deployed dashboard (Streamlit Cloud)
 │   └── *.ipynb                  # data_cleaning, translation, llm_summary: step by step
-├── tests/                       # pytest (67 tests)
+├── tests/                       # pytest (69 tests)
 ├── docs/                        # project_steps.md, project_structure.md, tools_justification.md
 ├── assets/, .streamlit/         # Roche logo, favicon, theme
 ├── deploy/data.enc              # Data of the deployed app, encrypted (key DATA_KEY: .env + Streamlit secrets)
@@ -129,7 +129,7 @@ Every file is described in [docs/project_structure.md](docs/project_structure.md
    ```bash
    venv/bin/python -m pytest -q tests
    ```
-   67 tests, synthetic data only, no network and no key needed.
+   69 tests, synthetic data only, no network and no key needed.
 
 
 

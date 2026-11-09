@@ -271,6 +271,21 @@ div[data-testid="stPopoverBody"]:has(.section-options):has(.col-picker) {{
 .ai-result li {{ margin: 4px 0; }}
 .ai-result p {{ margin: 6px 0; }}
 .ai-result p.hint {{ color: #6B7280; }}
+/* A line of the analysis with its sources (summary_to_html): a click opens them */
+.ai-claim summary {{ cursor: pointer; list-style: none; }}
+.ai-claim summary::-webkit-details-marker {{ display: none; }}
+.ai-claim summary:hover {{ background: #F3F7FE; }}
+.ai-claim .src-n {{ margin-left: 8px; font-size: .72rem; color: {ION_BLUE}; border: 1px solid #C9D8F5;
+  border-radius: {RADIUS}; padding: 0 5px; white-space: nowrap; }}
+.ai-claim[open] .src-n {{ background: {ION_BLUE}; color: #fff; }}
+.ai-src {{ margin: 4px 0 8px 0; padding: 6px 10px; background: #F7F9FC; border-left: 3px solid #C9D8F5;
+  font-size: .82rem; line-height: 1.45; color: #374151; }}
+.ai-src .src + .src {{ margin-top: 4px; }}
+.ai-src .src.warn {{ color: #9A3412; }}
+.ai-claim .src-n.warn {{ color: #9A3412; border-color: #F5C9A8; }}
+.ai-claim[open] .src-n.warn {{ background: #9A3412; color: #fff; }}
+.ai-src a.ai-goto {{ color: {ION_BLUE} !important; text-decoration: none; white-space: nowrap; }}
+.ai-src a.ai-goto:hover {{ text-decoration: underline; }}
 </style>
 """
 
@@ -361,7 +376,12 @@ SCROLL_SPY_JS = """
       // A menu entry: its section's blue title lands just under the menu (measured, the menu may wrap);
       // corrected once more after the charts above it have finished drawing.
       document.addEventListener("click", e => {
-        const a = e.target.closest(".ion-nav a[data-target]");
+        const a = e.target.closest(".ion-nav a[data-target], a.ai-goto[data-target]");
+        // a source of the Smart Analysis may be on a page (tab) of its section: open that page first
+        if (a && a.dataset.tab) {
+          const tab = [...document.querySelectorAll('[role="tab"]')].find(t => t.textContent.trim() === a.dataset.tab);
+          if (tab) tab.click();
+        }
         const anchor = a && document.getElementById(a.dataset.target);
         const el = anchor && (anchor.nextElementSibling || anchor);   // the blue title
         if (!el) return;
@@ -426,7 +446,10 @@ SCROLL_SPY_JS = """
         const a = e.target.closest(".ai-tools a");
         if (!a) return;
         e.preventDefault();
-        const box = a.closest(".ai-result").querySelector(".ai-body");
+        // a copy of the analysis without its sources (they are for checking in the dashboard)
+        const box = a.closest(".ai-result").querySelector(".ai-body").cloneNode(true);
+        box.querySelectorAll(".ai-src, .src-n").forEach(n => n.remove());
+        box.querySelectorAll("details").forEach(d => d.replaceWith(...d.querySelector("summary").childNodes));
         if (a.dataset.action === "copy") {
           const htmlText = box.innerHTML, plain = box.innerText;
           try {
@@ -434,9 +457,10 @@ SCROLL_SPY_JS = """
               "text/html": new Blob([htmlText], {type: "text/html"}),
               "text/plain": new Blob([plain], {type: "text/plain"})})]);
           } catch (err) {   // no clipboard API (e.g. http on another machine): copy the selection
+            box.style.cssText = "position: fixed; left: -9999px;"; document.body.appendChild(box);
             const range = document.createRange(); range.selectNodeContents(box);
             const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range);
-            document.execCommand("copy"); sel.removeAllRanges();
+            document.execCommand("copy"); sel.removeAllRanges(); box.remove();
           }
           const label = a.textContent; a.textContent = "Copied";
           setTimeout(() => { a.textContent = label; }, 1500);
@@ -898,9 +922,31 @@ def _inline(text, max_bold=1):
     return text.replace("*", "")
 
 
-def summary_to_html(text):
+def _claim(content_html, line, sources):
+    """A line of the analysis; with its sources, a click on it opens them, each with a link to its section.
+    sources(line) = (facts, numbers found in no fact); such numbers are flagged."""
+    found, unverified = sources(line) if sources else ([], [])
+    if not found and not unverified:
+        return content_html
+    items = []
+    if unverified:
+        items.append(f'<div class="src warn">⚠ Not in the figures given to the model: {html.escape(", ".join(unverified))}. '
+                     'Check this figure in the dashboard.</div>')
+    for fact in found:
+        tab = f' data-tab="{html.escape(fact["tab"])}"' if fact["tab"] else ""
+        items.append(f'<div class="src">{html.escape(fact["text"])} <a class="ai-goto" href="#{fact["anchor"]}" '
+                     f'data-target="{fact["anchor"]}"{tab}>→ {html.escape(fact["label"])}</a></div>')
+    plural = "s" if len(found) > 1 else ""
+    badge = f'<span class="src-n">{len(found)} source{plural}</span>' if found else ""
+    badge += '<span class="src-n warn">⚠ figure to check</span>' if unverified else ""
+    return (f'<details class="ai-claim"><summary>{content_html}{badge}</summary>'
+            f'<div class="ai-src">{"".join(items)}</div></details>')
+
+
+def summary_to_html(text, sources=None):
     """Render the LLM answer (### headings, '- ' bullets, **bold**) as HTML sections.
-    Robust to small format variations of the model ("**Key findings:**", "1. ...")."""
+    Robust to small format variations of the model ("**Key findings:**", "1. ...").
+    sources(line) = the facts a line rests on (llm_summary.match_sources): a click on the line shows them."""
     out, in_list = [], False
     for raw in text.splitlines():
         line = raw.strip()
@@ -916,21 +962,22 @@ def summary_to_html(text):
         if bullet:
             if not in_list:
                 out.append("<ul>"); in_list = True
-            out.append(f"<li>{_inline(bullet.group(1))}</li>")
+            out.append(f"<li>{_claim(_inline(bullet.group(1)), bullet.group(1), sources)}</li>")
         else:
             if in_list:
                 out.append("</ul>"); in_list = False
-            out.append(f"<p>{_inline(line)}</p>")
+            out.append(f"<p>{_claim(_inline(line), line, sources)}</p>")
     if in_list:
         out.append("</ul>")
     return "".join(out)
 
 
-def ai_result_html(text, meta, tools=True):
-    """The analysis as a card; tools = links to copy it (formatted) or download it (Word, text), in the browser."""
+def ai_result_html(text, meta, tools=True, sources=None):
+    """The analysis as a card; tools = links to copy it (formatted) or download it (Word, text), in the browser;
+    sources: see summary_to_html."""
     links = ('<div class="ai-tools"><a data-action="copy">Copy</a><a data-action="word">Download Word</a>'
              '<a data-action="text">Download text</a></div>') if tools else ""
-    return (f'<div class="ai-result"><div class="ai-body">{summary_to_html(text)}</div>'
+    return (f'<div class="ai-result"><div class="ai-body">{summary_to_html(text, sources)}</div>'
             f'<div class="meta">{html.escape(meta)}</div>{links}</div>')
 
 
@@ -947,8 +994,8 @@ def ai_outline():
     st.markdown(f'<div class="ai-result"><div class="ai-body">{body}</div></div>', unsafe_allow_html=True)
 
 
-def ai_result(text, meta):
-    st.markdown(ai_result_html(text, meta), unsafe_allow_html=True)
+def ai_result(text, meta, sources=None):
+    st.markdown(ai_result_html(text, meta, sources=sources), unsafe_allow_html=True)
 
 
 # ---------------------------------------------------------------------------

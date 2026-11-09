@@ -22,6 +22,7 @@ import time
 
 # Make scripts/ importable so we can reuse our modules
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+import llm_summary
 from llm_summary import (stream_summary, stream_summary_cloud, tidy, is_server_available,
                          is_cloud_configured, MODEL_NAME)
 from pseudonymise import PromptPseudonymiser
@@ -747,14 +748,19 @@ def render_ai_summary(mode: str):
         else:
             st.session_state[session_key] = (
                 filter_key, text, selection_name, stats["total_comments"],
-                time.strftime("%Y-%m-%d %H:%M"), label)
+                time.strftime("%Y-%m-%d %H:%M"), label, llm_summary.fact_index(stats, context))
 
     saved = st.session_state.get(session_key)
     if saved:
         if saved[0] != filter_key:
             st.caption("Note: analysis generated with different filters.")
+        facts = saved[6] if len(saved) > 6 else []   # the facts the model received, to show the sources of a line
+        if facts:
+            st.caption("Click a line to see the figures it rests on, and go to them in the dashboard. "
+                       "⚠ = a figure found in none of the figures given to the model: check it.")
         ui.ai_result(saved[1], f"{saved[2]} · based on {saved[3]} comments · generated {saved[4]}"
-                               + ("" if cloud else f" with {saved[5]} · figures computed by pandas"))
+                               + ("" if cloud else f" with {saved[5]} · figures computed by pandas"),
+                     partial(llm_summary.check_line, facts=facts) if facts else None)
     else:
         ui.ai_outline()   # the five sections, before the first run
 

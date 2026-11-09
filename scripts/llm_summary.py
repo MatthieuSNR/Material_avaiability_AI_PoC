@@ -95,65 +95,159 @@ def _times(x):
     return f"{x:.1f}× the average ({'more' if x > 1 else 'less'} often than average)"
 
 
-def describe_context(context: dict) -> list[str]:
+def describe_context(context: dict, with_sources: bool = False) -> list:
     """The findings of the Insights Lab written as plain sentences, one verified fact per line: the model
-    reasons on clear statements instead of reading JSON keys (it misread ratios and counts in tests)."""
+    reasons on clear statements instead of reading JSON keys (it misread ratios and counts in tests).
+    with_sources=True: (sentence, section of the dashboard it comes from, names in it) for each line."""
     lines = []
+
+    def add(text, section, *names):
+        lines.append((text, section, [str(n) for n in names if n]))
+
     sel = context.get("selection", {})
     if sel.get("filters"):
-        lines.append("The user filtered on: " + "; ".join(f"{k} = {', '.join(v)}" for k, v in sel["filters"].items())
-                     + f" (timeframe: {sel.get('timeframe')}). {sel.get('comments')} of {sel.get('all_comments')} comments.")
+        add("The user filtered on: " + "; ".join(f"{k} = {', '.join(v)}" for k, v in sel["filters"].items())
+            + f" (timeframe: {sel.get('timeframe')}). {sel.get('comments')} of {sel.get('all_comments')} comments.",
+            "key-statistics")
     for cause, d in context.get("root_causes_vs_all_comments_pct_points", {}).items():
-        lines.append(f"Root cause '{cause}': {d['selection_pct']}% of the comments of the selection vs "
-                     f"{d['all_comments_pct']}% of all comments ({d['difference_pct_points']:+} percentage points).")
+        add(f"Root cause '{cause}': {d['selection_pct']}% of the comments of the selection vs "
+            f"{d['all_comments_pct']}% of all comments ({d['difference_pct_points']:+} percentage points).",
+            "key-statistics", cause)
     for g in context.get("recurring_issues", []):
-        lines.append(f"Recurring issue \"{g['issue']}\": {g['entries']} entries on {g['materials']} materials, "
-                     f"{g['vendors']} vendor(s), main root cause '{g['main_root_cause']}'.")
+        add(f"Recurring issue \"{g['issue']}\": {g['entries']} entries on {g['materials']} materials, "
+            f"{g['vendors']} vendor(s), main root cause '{g['main_root_cause']}'.",
+            "frequent-comments", g["issue"], g["main_root_cause"])
     for c in context.get("comments_open_longest", []):
-        lines.append(f"Open for {c['days_visible']} days and still visible: \"{c['comment']}\" (root cause "
-                     f"'{c['root_cause']}', impact {c['impact']}, status {c['material_status']}).")
+        add(f"Open for {c['days_visible']} days and still visible: \"{c['comment']}\" (root cause "
+            f"'{c['root_cause']}', impact {c['impact']}, status {c['material_status']}).",
+            "frequent-comments", c["comment"], c["root_cause"])
     rci = context.get("root_cause_to_impact")
     if rci:
-        lines.append(f"Of the {rci['items_with_impact_communicated']} items whose impact was communicated, "
-                     f"{rci['severe_impact_pct_in_selection']}% had a Production or Market impact.")
+        add(f"Of the {rci['items_with_impact_communicated']} items whose impact was communicated, "
+            f"{rci['severe_impact_pct_in_selection']}% had a Production or Market impact.", "cause-impact")
         for cause, d in rci.get("per_root_cause", {}).items():
-            lines.append(f"Items with root cause '{cause}': {d['severe_pct']}% severe impact "
-                         f"({d['items_with_impact_communicated']} items), {_times(d['times_average'])}"
-                         + (", unlikely to be chance." if d["significant"] else ", may be chance."))
+            add(f"Items with root cause '{cause}': {d['severe_pct']}% severe impact "
+                f"({d['items_with_impact_communicated']} items), {_times(d['times_average'])}"
+                + (", unlikely to be chance." if d["significant"] else ", may be chance."), "cause-impact", cause)
     if "items_impact_not_communicated" in context:
-        lines.append(f"{context['items_impact_not_communicated']} of {context.get('items_in_selection')} items have no "
-                     "impact communicated (unknown, not 'no impact').")
+        add(f"{context['items_impact_not_communicated']} of {context.get('items_in_selection')} items have no "
+            "impact communicated (unknown, not 'no impact').", "cause-impact")
     weak = context.get("weak_signals", {})
     if weak:
-        lines.append(f"Weak signals: of {weak['items_with_first_comment']} items with a first comment, "
-                     f"{weak['share_of_these_items_with_impact_later_pct']}% later received a Production / Market impact"
-                     + (f", a median of {weak['median_days_between_first_comment_and_impact']:.0f} days after the first comment."
-                        if weak.get("median_days_between_first_comment_and_impact") is not None else "."))
+        add(f"Weak signals: of {weak['items_with_first_comment']} items with a first comment, "
+            f"{weak['share_of_these_items_with_impact_later_pct']}% later received a Production / Market impact"
+            + (f", a median of {weak['median_days_between_first_comment_and_impact']:.0f} days after the first comment."
+               if weak.get("median_days_between_first_comment_and_impact") is not None else "."), "watchlist")
         for ph in weak.get("phrases_followed_by_impact", []):
-            lines.append(f"First comments containing \"{ph['phrase']}\" ({ph['items_with_phrase']} items): "
-                         f"{ph['of_these_impact_later_pct']}% later had a severe impact, {_times(ph['times_average'])}"
-                         + (", unlikely to be chance" if ph["significant"] else "") + f". Example: \"{ph['example']}\"")
+            add(f"First comments containing \"{ph['phrase']}\" ({ph['items_with_phrase']} items): "
+                f"{ph['of_these_impact_later_pct']}% later had a severe impact, {_times(ph['times_average'])}"
+                + (", unlikely to be chance" if ph["significant"] else "") + f". Example: \"{ph['example']}\"",
+                "watchlist", ph["phrase"], ph["example"])
         for label in ("vendor", "root cause", "material status"):
             for value, d in weak.get(f"{label}_followed_by_impact", {}).items():
-                lines.append(f"Items whose first comment had {label} '{value}' ({d['items']} items): "
-                             f"{d['of_these_impact_later_pct']}% later had a severe impact.")
+                add(f"Items whose first comment had {label} '{value}' ({d['items']} items): "
+                    f"{d['of_these_impact_later_pct']}% later had a severe impact.", "watchlist", value)
         if weak.get("note"):
-            lines.append("Weak signals: " + weak["note"] + ".")
+            add("Weak signals: " + weak["note"] + ".", "watchlist")
     for w in context.get("watch_list_open_items_most_at_risk", []):
-        lines.append(f"Watch list (open, no severe impact yet), risk score {w['risk_score']}/100: \"{w['first_comment']}\" "
-                     f"— root cause '{w['root_cause']}', status now {w['status_now']}, first commented "
-                     f"{w['days_since_first_comment']} days ago; raised by: {w['why']}.")
+        add(f"Watch list (open, no severe impact yet), risk score {w['risk_score']}/100: \"{w['first_comment']}\" "
+            f"— root cause '{w['root_cause']}', status now {w['status_now']}, first commented "
+            f"{w['days_since_first_comment']} days ago; raised by: {w['why']}.",
+            "watchlist", w["first_comment"], w["root_cause"])
     aso = context.get("actual_stock_out_last_week")
     if aso:
         changes = "; ".join(f"'{c}' +{d['entered']} / -{d['left']}" for c, d in aso["root_causes_of_the_change"].items())
-        lines.append(f"Items in Actual Stock Out: {aso['items_previous_week']} the previous week, {aso['items_last_week']} "
-                     f"last week" + (f" (entered / left by root cause: {changes})." if changes else "."))
+        add(f"Items in Actual Stock Out: {aso['items_previous_week']} the previous week, {aso['items_last_week']} "
+            f"last week" + (f" (entered / left by root cause: {changes})." if changes else "."),
+            "trends", *aso["root_causes_of_the_change"])
     trend = context.get("root_causes_items_per_week_change_last_4_weeks", {})
     for direction in ("rising", "falling"):
         for cause, v in trend.get(direction, {}).items():
-            lines.append(f"Root cause '{cause}' is {direction}: {v:+} items per week on average over the last 4 weeks "
-                         "compared with the 4 weeks before.")
-    return lines
+            add(f"Root cause '{cause}' is {direction}: {v:+} items per week on average over the last 4 weeks "
+                "compared with the 4 weeks before.", "trends", cause)
+    return lines if with_sources else [text for text, _, _ in lines]
+
+
+# ------------------------------------------------------------------ sources of the analysis (fact checking)
+# Each line of the analysis is linked to the facts it rests on: the numbers, names and quoted comments it shares
+# with the facts sent to the model. Matched afterwards, so it does not depend on the model citing its sources.
+SOURCE_PAGES = {   # section of a fact -> (label of the link, anchor of the section, page (tab) to open in it)
+    "key-statistics": ("Smart Analysis → Key statistics used", "ai-summary", "Key statistics used"),
+    "frequent-comments": ("Most Frequent Comments", "frequent-comments", None),
+    "trends": ("Root Cause Trends", "trends", None),
+    "cause-impact": ("Impact by Root Cause", "cause-impact", None),
+    "watchlist": ("Watchlist (statistical details)", "watchlist", None),
+}
+_NUMBER = re.compile(r"(?<![\w.])\d[\d,']*(?:\.\d+)?")
+
+
+def _numbers(text):
+    """The numbers of a text, written the same way whatever the format: '1,221' -> '1221', '18.20' -> '18.2'."""
+    found = set()
+    for raw in _NUMBER.findall(str(text)):
+        try:
+            found.add(f"{float(raw.replace(',', '').replace(chr(39), '')):g}")
+        except ValueError:
+            pass
+    return found
+
+
+def _stat_facts(stats, filtered_on=()):
+    """The key statistics sent to the model, one sentence each (dictionaries: one sentence per entry)."""
+    facts = []
+    for key, value in build_facts(stats, filtered_on).items():
+        label = key.replace("_", " ")
+        if isinstance(value, dict):
+            for name, v in value.items():
+                facts.append((f"{label}: {name} = {v}", "key-statistics", [str(name)]))
+        else:
+            facts.append((f"{label}: {value}", "key-statistics", []))
+    return facts
+
+
+def fact_index(stats: dict, context: dict | None = None) -> list[dict]:
+    """Every fact the model received, with where it comes from in the dashboard (for match_sources)."""
+    context = context or {}
+    facts = _stat_facts(stats, list(context.get("selection", {}).get("filters", {})))
+    facts += describe_context(context, with_sources=True)
+    comments = {c for group in stats.get("comments_by_root_cause", {}).values() for c in group}
+    comments |= set(stats.get("top_comments", []))
+    facts += [(f"Planner comment: \"{c}\"", "frequent-comments", [c]) for c in sorted(comments)]
+    index = []
+    for text, section, names in facts:
+        label, anchor, tab = SOURCE_PAGES[section]
+        names = names + [n.split("_", 1)[1] for n in names if "_" in n and len(n.split("_", 1)[1]) >= 6]
+        index.append({"text": text, "label": label, "anchor": anchor, "tab": tab,
+                      "numbers": _numbers(text), "names": [n.lower() for n in names if len(n) >= 4]})
+    return index
+
+
+def match_sources(line: str, facts: list[dict], limit: int = 3) -> list[dict]:
+    """The facts a line of the analysis rests on, best first: a quoted comment, then the same numbers, then the
+    same names (root cause, vendor, phrase). Small numbers (below 10) only count next to a matching name."""
+    low = line.lower()
+    quotes = [q.lower() for q in re.findall(r'["“”]([^"“”]{12,})["“”]', line)]
+    numbers = _numbers(line)
+    scored = []
+    for fact in facts:
+        names = sum(1 for n in fact["names"] if n in low)
+        shared = numbers & fact["numbers"]
+        if not names:
+            shared = {n for n in shared if float(n) >= 10}
+        quoted = any(q in fact["text"].lower() for q in quotes)
+        score = 4 * quoted + 2 * len(shared) + names
+        if quoted or shared or names:
+            scored.append((score, -len(scored), fact))
+    scored.sort(key=lambda x: (x[0], x[1]), reverse=True)
+    return [fact for score, _, fact in scored[:limit]]
+
+
+def check_line(line: str, facts: list[dict]) -> tuple[list[dict], list[str]]:
+    """The sources of a line (match_sources) and its numbers found in NO fact sent to the model (10 and above;
+    smaller ones are often counts the model wrote in words): a figure to check, possibly invented."""
+    known = set().union(*(fact["numbers"] for fact in facts)) if facts else set()
+    unverified = sorted((n for n in _numbers(line) if float(n) >= 10 and n not in known), key=float)
+    return match_sources(line, facts), unverified
 
 
 def build_prompt(stats: dict, sample_comments: list[str], pseudonymised: bool = False, context: dict | None = None) -> list[dict]:

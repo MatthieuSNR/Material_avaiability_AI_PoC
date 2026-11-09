@@ -107,3 +107,26 @@ def test_rendered_analysis_shows_no_asterisks():
     import ui
     html_text = ui.summary_to_html("### Key findings\n- **Vendor A** drives *most* stock-outs, **second** one\n- a lone * star")
     assert "*" not in html_text and html_text.count("<b>") == 1 and "most stock-outs" in html_text
+
+
+def test_a_line_of_the_analysis_is_linked_to_the_facts_it_rests_on():
+    import llm_summary
+    stats = {"total_comments": 120, "top_root_causes_pct": {"PL_Shortterm demand": 18.2, "S_Lack of Raw Material": 9.7},
+             "comments_by_root_cause": {"PL_Shortterm demand": ["Request for pull-in from supplier"]}, "top_comments": []}
+    context = {"root_cause_to_impact": {"items_with_impact_communicated": 1221, "severe_impact_pct_in_selection": 60.0,
+                                        "per_root_cause": {}}}
+    facts = llm_summary.fact_index(stats, context)
+    line = "- **Short-term demand dominates**: Shortterm demand is 18.2% of the comments, e.g. \"Request for pull-in from supplier\"."
+    found = llm_summary.match_sources(line, facts)
+    assert found[0]["label"] == "Most Frequent Comments" and "18.2" in found[1]["text"]
+    assert found[1]["tab"] == "Key statistics used"
+    severe = llm_summary.match_sources("60% of the 1,221 items with an impact were severe.", facts)
+    assert severe[0]["label"] == "Impact by Root Cause"
+    assert llm_summary.match_sources("Escalate to the buyers.", facts) == []
+
+
+def test_a_figure_the_model_did_not_receive_is_flagged():
+    import llm_summary
+    facts = llm_summary.fact_index({"total_comments": 120, "top_root_causes_pct": {"PL_Shortterm demand": 18.2}}, {})
+    sources, unverified = llm_summary.check_line("Shortterm demand: 264 entries, 18.2% of the comments, 3 vendors.", facts)
+    assert unverified == ["264"] and sources

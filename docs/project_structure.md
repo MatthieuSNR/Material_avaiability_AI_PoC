@@ -57,7 +57,7 @@ Roche_AI_PoC/
 │   ├── translation.ipynb          # Step 7 (7.1-7.5)
 │   └── llm_summary.ipynb          # Statistics, prompt, pseudonymised prompt, cloud / local analysis (switches)
 │
-├── tests/                         # pytest, synthetic data only, no network (67 tests)
+├── tests/                         # pytest, synthetic data only, no network (69 tests)
 │   ├── test_comment_cleaning.py   # Journal entries, signatures, snapshot merge, abbreviations (library, expanded twice),
 │   │                              #   entry-by-entry translation, Comment_EN from the cache
 │   ├── test_glossary.py           # DeepL glossary: validation, hash, forced terms, refresh of stale translations

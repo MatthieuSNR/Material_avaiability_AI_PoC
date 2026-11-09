@@ -90,6 +90,7 @@ Steps 1 to 6: `scripts/data_cleaning.py` and `data_cleaning.ipynb`; step 7: `scr
 - **Actions** (`scripts/llm_summary.py`):
   - Compact prompt: key statistics (every key states its unit), the most frequent informative comments of the three main root causes, the findings of the Insights Lab and the filters of the selection.
   - Five fixed sections: Key findings, What drives the issues, Early warnings, Risks to escalate, Recommended actions; 250 to 320 words asked; the answer is streamed (temperature 0.2).
+  - **Sources of every line** (feedback of the first usability session: tracing a statement back to the statistics was laborious): a click on a line of the analysis opens the facts it rests on, each with a link to its section (Key statistics used, Most Frequent Comments, Root Cause Trends, Impact by Root Cause, Watchlist). The facts are those sent to the model; a line is matched to them afterwards by its numbers, names and quoted comments (`llm_summary.fact_index`, `match_sources`), so it does not depend on the model citing its sources. A figure of 10 or more found in none of these facts is flagged **⚠ figure to check** (`check_line`). Tried on a local run: the model wrote 264 entries where the source says 137, and a falling root cause as rising: both visible in one click.
   - Display: one bold phrase per bullet at most, no markdown asterisks left; **Copy** (formatted, for Word or an e-mail), **Download Word** and **Download text** under the analysis (in the browser).
   - **Cloud** (the deployed dashboard, Streamlit Cloud): Mistral API, default model `ministral-14b-latest` (`MISTRAL_MODEL` in `.env`), pseudonymised prompt. Chosen on 16 Oct. so that the app can run on any laptop and be deployed, and the Mac no longer heats up.
   - **Local** (the dashboard on this Mac, localhost; chosen by `config.ON_CLOUD`): LM Studio with Mistral 7B Instruct v0.3 (`LM_STUDIO_BASE_URL`, `LM_STUDIO_MODEL` in `.env`); no data leaves the machine.
@@ -103,11 +104,11 @@ Steps 1 to 6: `scripts/data_cleaning.py` and `data_cleaning.ipynb`; step 7: `scr
 - **Limits**: one shared password; the data runs on Streamlit's servers (US), with Marco's agreement. Details in `tools_justification.md`, section 12. Tunnels from this Mac (ngrok, Cloudflare) were tried first and dropped: the Roche network blocks them.
 
 ## 📌 Part F: Tests
-- **Actions**: `venv/bin/python -m pytest -q tests` (67 tests), synthetic data only, fake API clients: no network, no key, no Roche data.
+- **Actions**: `venv/bin/python -m pytest -q tests` (69 tests), synthetic data only, fake API clients: no network, no key, no Roche data.
   - `test_comment_cleaning.py` (23): journal entries and signatures (chains, typos, `n/a`), snapshot merge (partial week skipped), abbreviations by language and on the real library (e.g. `LT` → *Liefertermin* in German only), a meaning that another row would expand again, entry-by-entry translation, `Comment_EN` from the cache when saving (no DeepL call), no login in the output.
   - `test_glossary.py` (10): validation of the glossary, whole-word matching, creation and reuse on DeepL, fallback without glossary, forced terms, stale translations redone only on request.
   - `test_pseudonymise.py` (7): names, IDs, @-mentions, quantities and prices replaced and restored.
-  - `test_cloud_summary.py` (8): no real name in the Mistral request, aliases restored in the streamed answer, filters known and trivial statistics dropped, invented alias neutralised, no asterisk in the rendered analysis.
+  - `test_cloud_summary.py` (10): sources of every line and figures to check; no real name in the Mistral request, aliases restored in the streamed answer, filters known and trivial statistics dropped, invented alias neutralised, no asterisk in the rendered analysis.
   - `test_insights.py` (19): grouping rules (opposite meanings kept apart, grouping by meaning), journal entries, tracking table, status change, root cause × impact, stakeholders merged, weak signals (phrases, context, model), Lab filters, embedding cache, a chart drawn once for the same data.
 
 ## 📌 Part G: Insights Lab (analysis sections)
