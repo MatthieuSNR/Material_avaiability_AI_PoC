@@ -90,7 +90,7 @@ def build_current(merged):
     last["Impact_Level"] = last["Impact"].map(impact_level)
     last["Commented"] = last["Comment"].notna()
     return last[["Snapshot_Date"] + ITEM + ["MATERIAL_STATUS", "Root_Cause", "Impact_Level", "Commented", "VENDOR_NAME",
-                                            "MATERIAL_DESC", "MRP_CONTROLLER", "PURCHASING_GROUP"]].reset_index(drop=True)
+                                            "MATERIAL_DESC", "MRP_CONTROLLER", "PURCHASING_GROUP", "PLANT"]].reset_index(drop=True)
 
 
 def material_status(lines):

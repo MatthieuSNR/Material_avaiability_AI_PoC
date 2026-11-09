@@ -360,8 +360,9 @@ def weak_signal_items(tracking, comments_en):
     on the day of their first comment are left out: there is nothing to anticipate."""
     t = tracking.assign(Snapshot_Date=pd.to_datetime(tracking["Snapshot_Date"]))
     commented = t.dropna(subset=["Comment"]).sort_values("Snapshot_Date")
-    first = commented.groupby(ITEM).first()[["Snapshot_Date", "Comment", "Root_Cause", "VENDOR_NAME", "MATERIAL_STATUS",
-                                              "MRP_CONTROLLER", "MATERIAL_DESC"]]
+    first = commented.groupby(ITEM).first()[[c for c in ["Snapshot_Date", "Comment", "Root_Cause", "VENDOR_NAME",
+                                                         "MATERIAL_STATUS", "MRP_CONTROLLER", "MATERIAL_DESC", "PLANT"]
+                                             if c in commented]]
     first = first.rename(columns={"Snapshot_Date": "First_comment"})
     severe_day = t[t["Impact_Level"].isin(SEVERE_IMPACTS)].groupby(ITEM)["Snapshot_Date"].min().rename("First_severe")
     last = t.sort_values("Snapshot_Date").groupby(ITEM).last()

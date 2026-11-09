@@ -223,8 +223,9 @@ def test_last_snapshot_keeps_all_lines_and_a_material_counts_once():
         "MATERIAL_STATUS": ["Good Part", "Good Part", "Actual Stock Out", "Below Safety"],
         "Root_Cause": [None, "S_Planning Issue", None, None], "Impact": [None, "Production (Stop&Go)", None, None],
         "Comment": [None, "text", None, None], "VENDOR_NAME": ["V", "V", "V", "W"], "MATERIAL_DESC": ["A", "A", "A", "B"],
-        "MRP_CONTROLLER": ["C"] * 4, "PURCHASING_GROUP": ["P"] * 4})
+        "MRP_CONTROLLER": ["C"] * 4, "PURCHASING_GROUP": ["P"] * 4, "PLANT": [4700, 4700, 4700, 4419]})
     current = tr.build_current(merged)
+    assert current["PLANT"].tolist() == [4700, 4700, 4419]   # the plant filter also works on the last snapshot
     assert len(current) == 3 and "Comment" not in current and current["Commented"].sum() == 1   # uncommented lines stay
     assert current["Impact_Level"].dropna().tolist() == ["Production"]
     assert tr.material_status(current).to_dict() == {1: "Actual Stock Out", 2: "Below Safety"}

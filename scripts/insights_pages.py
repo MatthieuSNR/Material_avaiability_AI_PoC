@@ -55,6 +55,11 @@ HELP = {
 }
 
 
+def plant_label(plants):
+    """Plant code as text ("4700"), as the filter shows it; 'Unknown' when missing."""
+    return pd.to_numeric(plants, errors="coerce").astype("Int64").astype(str).replace("<NA>", "Unknown")
+
+
 def _with_labels(t):
     """The columns of the sidebar filters, on the tracking table or the last snapshot."""
     t["Snapshot_Date"] = pd.to_datetime(t["Snapshot_Date"])
@@ -63,6 +68,7 @@ def _with_labels(t):
                          + t["VENDOR_ACCOUNT_NUMBER"].astype("Int64").astype(str).replace("<NA>", "no vendor"))
     t["MRP_CONTROLLER"] = t["MRP_CONTROLLER"].fillna("Unknown")
     t["PURCHASING_GROUP"] = t["PURCHASING_GROUP"].fillna("Unknown")
+    t["PLANT"] = plant_label(t["PLANT"])
     t["Stakeholder"] = t["Root_Cause"].map(ins.stakeholder).where(t["Root_Cause"].notna())
     return t
 
@@ -123,7 +129,7 @@ def label_key(label):
 
 def filter_tracking(tracking, selections, period=None):
     """The sidebar filters and the timeframe, on the tracking table (one row per day and item):
-    * MRP controller, purchasing group, stakeholder, root cause: on the rows;
+    * plant, MRP controller, purchasing group, stakeholder, root cause: on the rows;
     * vendor and material: on their number (the label of the filter ends with it); MATERIAL_NUMBER: these numbers
       (the materials of the Material Status filter);
     * impact: on the items whose impact over the timeframe is one of the selected levels; 'Not communicated'
@@ -131,7 +137,7 @@ def filter_tracking(tracking, selections, period=None):
     if period:
         start, end = period
         tracking = tracking[(tracking["Snapshot_Date"] >= start) & (tracking["Snapshot_Date"] <= end)]
-    for column in ("MRP_CONTROLLER", "PURCHASING_GROUP", "Stakeholder", "Root_Cause"):
+    for column in ("PLANT", "MRP_CONTROLLER", "PURCHASING_GROUP", "Stakeholder", "Root_Cause"):
         if selections.get(column):
             tracking = tracking[tracking[column].isin(selections[column])]
     if selections.get("VENDOR_LABEL"):
@@ -817,9 +823,9 @@ def _watch_list(items, tracking, model, columns_panel):
     watch["Material number"] = watch["MATERIAL_NUMBER"].astype("int64").astype(str)
     watch["Why"] = watch["Why"].str.replace(r", (?=vendor: |root cause: |status: |phrase )", "\n", regex=True)   # one per line
     table = watch[["Risk", "MATERIAL_DESC", "Material number", "Why", "Text", "VENDOR_NAME", "Root_Cause", "Status_now",
-                   "Days since first comment", "MRP_CONTROLLER"]].rename(columns={
+                   "Days since first comment", "MRP_CONTROLLER", "PLANT"]].rename(columns={
         "Risk": "Risk score", "MATERIAL_DESC": "Material", "Text": "First comment (EN)", "Root_Cause": "Root cause", "VENDOR_NAME": "Vendor",
-        "Status_now": "Status now", "MRP_CONTROLLER": "MRP Controller"})
+        "Status_now": "Status now", "MRP_CONTROLLER": "MRP Controller", "PLANT": "Plant"})
     # In HTML for the Copy button of the material number
     shown = ui.table_toolbar("t_watchlist", list(table.columns), list(table.columns), panel=columns_panel)
     ui.copy_table(table[shown], "Material number", bar_column="Risk score", wide=("Why", "First comment (EN)"),
@@ -855,7 +861,7 @@ def _tracking(df, selections, period):
 
 
 # ------------------------------------------------------------------ context for the Smart Analysis (LLM)
-FILTER_NAMES = {"MRP_CONTROLLER": "MRP controller", "PURCHASING_GROUP": "purchasing group", "VENDOR_LABEL": "vendor",
+FILTER_NAMES = {"PLANT": "plant", "MRP_CONTROLLER": "MRP controller", "PURCHASING_GROUP": "purchasing group", "VENDOR_LABEL": "vendor",
                 "MATERIAL_LABEL": "material", "Stakeholder": "stakeholder", "Root_Cause": "root cause",
                 "Impact_Level": "impact", "Material_Status": "material status today"}
 

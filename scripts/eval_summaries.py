@@ -71,7 +71,7 @@ PLAN = [("vendor", "VENDOR_LABEL", [1, 3, 8, 20, 40]),
         ("root_cause", "Root_Cause", [1, 2, 3, 4]),
         ("purchasing_group", "PURCHASING_GROUP", [2, 8])]
 REPEATS = {"vendor-1": 3, "mrp_controller-4": 3, "material-5": 3}   # generations for the variation check
-EMPTY = {k: [] for k in ["MRP_CONTROLLER", "PURCHASING_GROUP", "VENDOR_LABEL", "MATERIAL_LABEL", "Stakeholder",
+EMPTY = {k: [] for k in ["PLANT", "MRP_CONTROLLER", "PURCHASING_GROUP", "VENDOR_LABEL", "MATERIAL_LABEL", "Stakeholder",
                          "Root_Cause", "Impact_Level", "Material_Status"]}
 
 
