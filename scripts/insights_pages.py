@@ -850,12 +850,18 @@ def _watch_list(items, tracking, model, columns_panel):
     watch["Risk"] = (watch["Risk"] * 100).round(0)
     watch["Material number"] = watch["MATERIAL_NUMBER"].astype("int64").astype(str)
     watch["Why"] = watch["Why"].str.replace(r", (?=vendor: |root cause: |status: |phrase )", "\n", regex=True)   # one per line
+    watch["Vendor account"] = watch["VENDOR_ACCOUNT_NUMBER"].astype("Int64").astype(str).replace("<NA>", "")
+    watch["First comment on"] = watch["First_comment"].dt.strftime("%Y-%m-%d")
     table = watch[["Risk", "MATERIAL_DESC", "Material number", "Why", "Text", "VENDOR_NAME", "Root_Cause", "Status_now",
-                   "Days since first comment", "MRP_CONTROLLER", "PLANT"]].rename(columns={
+                   "Days since first comment", "MRP_CONTROLLER", "PLANT", "Vendor account", "First comment on",
+                   "MATERIAL_STATUS"]].rename(columns={
         "Risk": "Risk score", "MATERIAL_DESC": "Material", "Text": "First comment (EN)", "Root_Cause": "Root cause", "VENDOR_NAME": "Vendor",
-        "Status_now": "Status now", "MRP_CONTROLLER": "MRP Controller", "PLANT": "Plant"})
+        "Status_now": "Status now", "MRP_CONTROLLER": "MRP Controller", "PLANT": "Plant",
+        "MATERIAL_STATUS": "Status at first comment"})
+    hidden = ("Vendor account", "First comment on", "Status at first comment")   # ready in "Columns", hidden at first
     # In HTML for the Copy button of the material number
-    shown = ui.table_toolbar("t_watchlist", list(table.columns), list(table.columns), panel=columns_panel)
+    shown = ui.table_toolbar("t_watchlist", list(table.columns), [c for c in table.columns if c not in hidden],
+                             panel=columns_panel)
     ui.copy_table(table[shown], "Material number", bar_column="Risk score", wide=("Why", "First comment (EN)"),
                   nowrap=("Material", "Status now", "MRP Controller"))
     st.caption(f"Items of the selection still visible on {last_day:%d.%m.%Y} with no Production / Market impact "

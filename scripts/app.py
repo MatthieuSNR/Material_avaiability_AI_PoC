@@ -155,7 +155,19 @@ TABLE_COLUMNS = {  # data column -> displayed name, in the default order of the 
     "MRP_CONTROLLER": "MRP Controller", "MATERIAL_LABEL": "Material", "PLANT": "Plant"}
 if "Comment_Expanded" in df.columns:  # built by data_cleaning.py: abbreviations written out
     TABLE_COLUMNS["Comment_Expanded"] = "Comment (expanded)"
-DEFAULT_COLUMNS = [c for c in TABLE_COLUMNS.values() if c not in ("Original comment", "Comment (expanded)")]
+# Ready in "▥ Columns" but hidden at first: e.g. the material number alone, without the description beside it.
+# No quantity and no price (sensitive data).
+df["Material_Number"] = df["MATERIAL_NUMBER"].astype("Int64").astype(str)
+df["Vendor_Account"] = df["VENDOR_ACCOUNT_NUMBER"].astype("Int64").astype(str).replace("<NA>", "")
+EXTRA_COLUMNS = {
+    "Material_Number": "Material number", "MATERIAL_DESC": "Material description", "Vendor_Account": "Vendor account",
+    "Stakeholder": "Stakeholder", "ITEM_DELIVERY_DATE": "Delivery date", "RESCHEDULING_DATE": "Rescheduling date",
+    "ORDER_CONFIRMATION": "Order confirmed", "Delay": "Delay (days)", "MATERIAL_RISK": "Material risk",
+    "SOURCING_MANAGER": "Sourcing manager", "Instruments_Affected": "Instruments affected",
+    "N_Snapshots": "Snapshots seen", "N_Entries": "Entries", "N_Authors": "Authors", "comment_language": "Language"}
+TABLE_COLUMNS.update({k: v for k, v in EXTRA_COLUMNS.items() if k in df.columns})
+DEFAULT_COLUMNS = [c for c in TABLE_COLUMNS.values()
+                   if c not in ("Original comment", "Comment (expanded)", *EXTRA_COLUMNS.values())]
 
 # A comment is a journal: its entries are already written one after the other, separated by ENTRY_SEPARATOR
 # (" ¦▸ ", scripts/entries.py), so a table cell shows them on one line as they are.
@@ -387,7 +399,7 @@ def unmerged_comments(columns_panel, comments):
     for text_col in ["Comment (EN)", "Original comment", "Comment (expanded)"]:
         if text_col in table_df:
             table_df[text_col] = inline_entries(table_df[text_col])
-    for date_col in ["First seen", "Last seen", "Stockout Date"]:
+    for date_col in ["First seen", "Last seen", "Stockout Date", "Delivery date", "Rescheduling date"]:
         if date_col in table_df:
             table_df[date_col] = pd.to_datetime(table_df[date_col], errors="coerce").dt.strftime("%Y-%m-%d")
     st.dataframe(
