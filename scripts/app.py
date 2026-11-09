@@ -146,7 +146,7 @@ ui.scroll_spy()  # menu entry of the section on screen in blue
 # Stored on this Mac (data/interim, not pushed to GitHub), so every user of the shared app sees them.
 VIEWS_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                           "data", "interim", "saved_views.json")
-FILTER_KEYS = ["f_plant", "f_mrp", "f_pgroup", "f_vendor", "f_material", "f_stakeholder", "f_root_cause", "f_impact", "f_status"]
+FILTER_KEYS = ["f_mrp", "f_pgroup", "f_vendor", "f_material", "f_plant", "f_stakeholder", "f_root_cause", "f_impact", "f_status"]
 TABLE_COLUMNS = {  # data column -> displayed name, in the default order of the comments table
     "Comment_EN": "Comment (EN)", "Comment": "Original comment", "First_Seen": "First seen",
     "Last_Seen": "Last seen", "Days_Active": "Days visible", "STOCKOUT_DATE": "Stockout Date",
@@ -238,13 +238,13 @@ with st.sidebar.expander("Views", expanded=False):
     st.button("Save", on_click=save_view)
 
 
-# Filters, from top to bottom: plant, MRP controller, purchasing group (organisational
-# responsibility), vendor, material, stakeholder, root cause, impact.
+# Filters, from top to bottom: MRP controller, purchasing group (organisational
+# responsibility), vendor, material, plant, stakeholder, root cause, impact.
 # Every filter accepts several values (e.g. an MRP controller and the colleagues they back up);
 # an empty filter means "All". The filters cascade: each one only offers the values that exist
 # within the filters above it (e.g. only the vendors of the selected MRP controllers). They offer every value of the
 # data, commented or not: the comments, the tracking table and the last snapshot.
-FILTER_COLUMNS = ["PLANT", "MRP_CONTROLLER", "PURCHASING_GROUP", "VENDOR_LABEL", "MATERIAL_LABEL", "Stakeholder", "Root_Cause",
+FILTER_COLUMNS = ["MRP_CONTROLLER", "PURCHASING_GROUP", "VENDOR_LABEL", "MATERIAL_LABEL", "PLANT", "Stakeholder", "Root_Cause",
                   "Impact_Level"]
 tracking_all, current_all = insights_pages.load_tracking(), insights_pages.load_current()
 if tracking_all is None or current_all is None:
@@ -282,11 +282,11 @@ def impact_order(value):
 
 
 filters_box = st.sidebar.expander("Filters", expanded=True)
-selected_plant = multi_filter(filters_box, "Plant", "PLANT", "f_plant")
 selected_mrp = multi_filter(filters_box, "MRP Controller", "MRP_CONTROLLER", "f_mrp")
 selected_pgroup = multi_filter(filters_box, "Purchasing Group", "PURCHASING_GROUP", "f_pgroup")
 selected_vendor_label = multi_filter(filters_box, "Vendor", "VENDOR_LABEL", "f_vendor")          # name or account number
 selected_material_label = multi_filter(filters_box, "Material", "MATERIAL_LABEL", "f_material")  # number or description
+selected_plant = multi_filter(filters_box, "Plant", "PLANT", "f_plant")
 selected_stakeholder = multi_filter(filters_box, "Stakeholder", "Stakeholder", "f_stakeholder")   # prefix of the root cause
 selected_root_cause = multi_filter(filters_box, "Root Cause", "Root_Cause", "f_root_cause")
 selected_impact = multi_filter(filters_box, "Impact", "Impact_Level", "f_impact", order=impact_order)
@@ -312,9 +312,9 @@ def selection_label(values, short=False):
     names = [v.split(" — ")[0] for v in values] if short else list(values)
     return names[0] if len(names) == 1 else f"{names[0]} +{len(names) - 1}" if names else None
 
-selection_parts = [p for p in [selection_label(selected_plant), selection_label(selected_mrp), selection_label(selected_pgroup),
+selection_parts = [p for p in [selection_label(selected_mrp), selection_label(selected_pgroup),
                                selection_label(selected_vendor_label, short=True),
-                               selection_label(selected_material_label, short=True),
+                               selection_label(selected_material_label, short=True), selection_label(selected_plant),
                                selection_label(selected_stakeholder), selection_label(selected_root_cause),
                                selection_label(selected_impact), selection_label(selected_status)] if p]
 selection_name = " / ".join(selection_parts) if selection_parts else "All comments"

@@ -132,8 +132,9 @@ def filter_tracking(tracking, selections, period=None):
     * plant, MRP controller, purchasing group, stakeholder, root cause: on the rows;
     * vendor and material: on their number (the label of the filter ends with it); MATERIAL_NUMBER: these numbers
       (the materials of the Material Status filter);
-    * impact: on the items whose impact over the timeframe is one of the selected levels; 'Not communicated'
-      = items with no impact entered at all ('None (no impact)' = planning entered that there is none)."""
+    * impact: on the items whose most severe impact over the timeframe (and the root causes selected) is one of the
+      selected levels, as the Impact by Root Cause chart counts them; 'Not communicated' = items with no impact entered
+      at all ('None (no impact)' = planning entered that there is none)."""
     if period:
         start, end = period
         tracking = tracking[(tracking["Snapshot_Date"] >= start) & (tracking["Snapshot_Date"] <= end)]
@@ -150,8 +151,9 @@ def filter_tracking(tracking, selections, period=None):
         tracking = tracking[tracking["MATERIAL_NUMBER"].isin(selections["MATERIAL_NUMBER"])]
     if selections.get("Impact_Level"):
         wanted = set(selections["Impact_Level"])
-        levels = tracking.groupby(ins.ITEM)["Impact_Level"].agg(lambda s: set(s.dropna()))
-        keep = levels[levels.map(lambda s: bool(s & wanted) or (not s and ins.NOT_COMMUNICATED in wanted))].index
+        rank = tracking["Impact_Level"].fillna(ins.NOT_COMMUNICATED).map({l: i for i, l in enumerate(ins.IMPACT_COLUMNS)})
+        worst = rank.fillna(len(ins.IMPACT_COLUMNS) - 1).groupby([tracking[c] for c in ins.ITEM]).min()
+        keep = worst[worst.map(lambda r: ins.IMPACT_COLUMNS[int(r)] in wanted)].index
         tracking = tracking.set_index(ins.ITEM).loc[lambda d: d.index.isin(keep)].reset_index()
     return tracking
 
@@ -246,6 +248,14 @@ def _pick_segment(chart_key, cause_filter, part_filter):
 
 
 # ------------------------------------------------------------------ main page: most frequent comments
+def _pick_issue(table_key, picks):
+    """A click on a line of the grouped comments: the Material and Vendor filters take the materials and vendors of
+    this issue (picks: (material labels, vendor labels) per line). It runs before the next rerun."""
+    rows = st.session_state[table_key]["selection"].get("rows") or []
+    if rows:
+        st.session_state["f_material"], st.session_state["f_vendor"] = map(list, picks[rows[0]])
+
+
 def frequent_comments_section(filtered_df, selection_name, unmerged_table):
     """unmerged_table() draws the comments one by one (option 'Unmerged comments')."""
     settings, columns_panel = options_with_columns("frequent-comments", "Most Frequent Comments — " + selection_name)
@@ -270,7 +280,8 @@ def frequent_comments_section(filtered_df, selection_name, unmerged_table):
             "and `px13 - No stockout detected`. A comment with several dated entries counts each entry.\n\n"
             "Each line is an issue; open 'Why were these wordings grouped?' under the table to see which wordings "
             "were grouped, and why.")
-    entries = ins.comment_entries(filtered_df)[["Entry", "Root_Cause", "MATERIAL_NUMBER", "VENDOR_NAME", "Days_Active"]]
+    entries = ins.comment_entries(filtered_df)[["Entry", "Root_Cause", "MATERIAL_NUMBER", "VENDOR_NAME", "Days_Active",
+                                                "MATERIAL_LABEL", "VENDOR_LABEL"]]
     if entries.empty:
         st.info("No comments match the current filters.")
         return
@@ -286,7 +297,14 @@ def frequent_comments_section(filtered_df, selection_name, unmerged_table):
 
     table = groups.head(top_n).copy()
     table.insert(3, "% of entries", (table["Occurrences"] / len(entries) * 100).round(1))
-    ui.picked_table("t_grouped", panel=columns_panel, frame=
+    # A click on a line: the Material and Vendor filters take the materials and vendors of this issue
+    group_of = dict(zip(variants["Wording"].map(ins.normalise), variants["Group"]))
+    in_group = entries.assign(Group=entries["Entry"].map(ins.normalise).map(group_of))
+    picks = [(sorted(in_group.loc[in_group["Group"] == g, "MATERIAL_LABEL"].dropna().unique()),
+              sorted(in_group.loc[in_group["Group"] == g, "VENDOR_LABEL"].dropna().unique())) for g in table["Group"]]
+    pick_key = "t_grouped_pick_" + str(abs(hash((selection_name, str(period), method, threshold, top_n))))
+    ui.picked_table("t_grouped", panel=columns_panel, table_key=pick_key, on_select=partial(_pick_issue, pick_key, picks),
+                    selection_mode="single-row", frame=
         table.drop(columns=["Group", "Spellings"]).rename(columns={
             "Comment": "Comment (EN, most frequent wording)", "Variants": "Wordings grouped",
             "Days_visible": "Days visible (total)", "Main_root_cause": "Main root cause",
@@ -300,6 +318,9 @@ def frequent_comments_section(filtered_df, selection_name, unmerged_table):
             "Days visible (total)": st.column_config.NumberColumn(help="Total days these comments stayed in the dashboard."),
             "Root causes (entries)": st.column_config.TextColumn(width="large", help="Root causes entered with these "
                                                                                      "comments, with their count.")})
+
+    st.caption("Click a line to filter the dashboard on the materials and vendors of this issue (Material and Vendor "
+               "filters of the sidebar; clear them there).")
 
     with details("Why were these wordings grouped? (for analysts)"):
         choice = st.selectbox("Issue:", table["Comment"].tolist(), key="lab_group")
@@ -422,7 +443,8 @@ def page_cause_impact(df, selections, selection_name):
     _, period = timeframe_option(panel, "tf_impact")
     tracking = _tracking(df, selections, period)[1]
     explain("**Which root causes lead to which impact?** For every item (a material from a vendor) of the timeframe: "
-            "its root cause(s), the most severe impact planning communicated for it, and its material status.\n\n"
+            "its root cause(s), and for each one the most severe impact and the worst material status entered while this root "
+            "cause was entered (an impact entered under another root cause counts for that one).\n\n"
             "Impact levels, from the most severe: **Market** > **Production** > **Logistics** > **None** (planning "
             "entered that there is no impact). Items without any impact entered are **not communicated**: their "
             "impact is unknown, so they are left out of the impact chart.")
@@ -893,7 +915,8 @@ def smart_context(df, filtered_df, selections, period=None, timeframe=""):
                 "difference_pct_points": round(d, 1)} for c, d in diff.items()}
 
     # 2. recurring issues (near-identical comments grouped) and comments open for long
-    entries = ins.comment_entries(filtered_df)[["Entry", "Root_Cause", "MATERIAL_NUMBER", "VENDOR_NAME", "Days_Active"]]
+    entries = ins.comment_entries(filtered_df)[["Entry", "Root_Cause", "MATERIAL_NUMBER", "VENDOR_NAME", "Days_Active",
+                                                "MATERIAL_LABEL", "VENDOR_LABEL"]]
     if len(entries):
         groups, _ = _groups(entries.reset_index(drop=True), ins.METHODS["chars"], "chars")
         facts["recurring_issues"] = [

@@ -1101,9 +1101,12 @@ def copy_table(frame, copy_column, bar_column=None, wide=(), nowrap=()):
                 unsafe_allow_html=True)
 
 
-def picked_table(key, frame, hidden=(), panel=None, **dataframe_kwargs):
+def picked_table(key, frame, hidden=(), panel=None, table_key=None, **dataframe_kwargs):
     """st.dataframe with a '▥ Columns' panel above it: every column of `frame` can be shown, hidden and
-    reordered (hidden = columns not shown at first; panel: see table_toolbar). The choice is kept for the session."""
+    reordered (hidden = columns not shown at first; panel: see table_toolbar). The choice is kept for the session.
+    table_key: key of the table itself (for a selection, with on_select)."""
+    if table_key:
+        dataframe_kwargs["key"] = table_key
     columns = list(frame.columns)
     shown = table_toolbar(key, columns, [c for c in columns if c not in hidden], panel=panel)
     dataframe_kwargs.setdefault("width", "stretch")

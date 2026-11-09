@@ -281,12 +281,15 @@ def status_change(tracking, day_a, day_b, statuses=("Actual Stock Out",)):
 
 # ------------------------------------------------------------------ 3. root cause x impact
 def item_root_cause_impact(tracking):
-    """One row per (item, root cause): the most severe impact entered for the item ('Not communicated' if none)."""
+    """One row per (item, root cause): the most severe impact entered WHILE this root cause was entered for the item
+    ('Not communicated' if none). An impact entered under another root cause belongs to that one: so a root cause
+    gives the same figures with or without the Root Cause filter (which keeps the rows of that cause)."""
     order = {level: i for i, level in enumerate(IMPACT_COLUMNS)}
-    worst = (tracking.dropna(subset=["Impact_Level"]).assign(_r=lambda d: d["Impact_Level"].map(order))
-             .sort_values("_r").groupby(ITEM)["Impact_Level"].first())
-    pairs = tracking.dropna(subset=["Root_Cause"]).drop_duplicates(ITEM + ["Root_Cause"])[ITEM + ["Root_Cause"]]
-    pairs = pairs.join(worst, on=ITEM)
+    rows = tracking.dropna(subset=["Root_Cause"])
+    worst = (rows.dropna(subset=["Impact_Level"]).assign(_r=lambda d: d["Impact_Level"].map(order))
+             .sort_values("_r").groupby(ITEM + ["Root_Cause"])["Impact_Level"].first())
+    pairs = rows.drop_duplicates(ITEM + ["Root_Cause"])[ITEM + ["Root_Cause"]]
+    pairs = pairs.join(worst, on=ITEM + ["Root_Cause"])
     pairs["Impact_Level"] = pairs["Impact_Level"].fillna(NOT_COMMUNICATED)
     return pairs
 
