@@ -33,8 +33,8 @@ SIGNIFICANT = 0.05
 UNMERGED = "Unmerged comments"   # option of Most Frequent Comments: nothing grouped
 
 # Timeframe, in the Options of each section. A comment or an item is in the period if it was visible during it.
-LAST_SNAPSHOT = "Last snapshot"   # first choice of Top Root Causes
-TIMEFRAMES = ["All snapshots", "Last 4 weeks", "Last 8 weeks", "Last 16 weeks", "Custom period"]
+LAST_SNAPSHOT = "Last snapshot"   # first choice (default) of Top Root Causes
+TIMEFRAMES = ["All snapshots", LAST_SNAPSHOT, "Last 4 weeks", "Last 8 weeks", "Last 16 weeks", "Custom period"]
 TIMEFRAME_KEYS = ["tf_top", "tf_frequent", "tf_trends", "tf_impact", "tf_watchlist", "tf_smart"]
 
 # Column "times the rate of the whole selection" (the reference of every comparison: all the items of the
@@ -90,7 +90,8 @@ def load_current():
 
 def timeframe_option(panel, key, choices=TIMEFRAMES):
     """The timeframe of a section, chosen in its Options: returns (choice, period); period = (start, end), or None
-    for all the snapshots (and for LAST_SNAPSHOT). One day: a custom period that starts and ends on that day."""
+    for all the snapshots. LAST_SNAPSHOT: the day of the last snapshot. One day: a custom period that starts and ends
+    on that day."""
     tracking = load_tracking()
     first, last = tracking["Snapshot_Date"].min(), tracking["Snapshot_Date"].max()
     choice = panel.selectbox("Timeframe:", choices, key=key,
@@ -100,6 +101,8 @@ def timeframe_option(panel, key, choices=TIMEFRAMES):
                                  max_value=last.date(), key=f"{key}_dates")
         if isinstance(dates, tuple) and len(dates) == 2:   # a tuple of two only when BOTH dates are selected
             return choice, (pd.to_datetime(dates[0]), pd.to_datetime(dates[1]) + pd.Timedelta(days=1) - pd.Timedelta(seconds=1))
+    elif choice == LAST_SNAPSHOT:
+        return choice, (last, last + pd.Timedelta(days=1) - pd.Timedelta(seconds=1))
     elif choice.split()[1].isdigit():   # "Last 4 weeks"
         return choice, (last - pd.Timedelta(weeks=int(choice.split()[1])), last)
     return choice, None
@@ -407,7 +410,7 @@ def _status_change(tracking):
     ends = ins.week_end_days(tracking)
     weeks = sorted(ends)
     if len(weeks) < 2:
-        st.info("Not enough weeks in the timeframe.")
+        st.info("Not enough weeks in the timeframe: a trend needs at least two weeks (Options: Timeframe).")
         return
     c1, c2, c3 = st.columns([1.6, 1, 1])
     statuses = c1.multiselect("Status:", ["Actual Stock Out", "Potential Stock Out"], default=["Actual Stock Out"],
@@ -644,13 +647,15 @@ def _top_share(items, share=0.1):
 
 def page_watchlist(df, selections, selection_name):
     settings, columns_panel = options_with_columns("watchlist", "Watchlist — " + selection_name)
-    _, period = timeframe_option(settings, "tf_watchlist")
+    timeframe, period = timeframe_option(settings, "tf_watchlist")
     tracking, tracking_filtered = _tracking(df, selections, period)
     comments_en = st.session_state["_comments_en"]
     all_items, model = weak_signals(tracking, comments_en)
     in_scope = set(map(tuple, tracking_filtered[ins.ITEM].drop_duplicates().to_numpy()))
     items = all_items[[(m, v) in in_scope for m, v in zip(all_items["MATERIAL_NUMBER"], all_items["VENDOR_ACCOUNT_NUMBER"])]]
-    if period:
+    if timeframe == LAST_SNAPSHOT:   # the items still visible on the last snapshot, whenever first commented
+        items = items[items["Last_seen"] >= period[0]]
+    elif period:
         items = items[(items["First_comment"] >= period[0]) & (items["First_comment"] <= period[1])]
     items = items.reset_index(drop=True)
     if items.empty:
@@ -667,7 +672,8 @@ def _watchlist_details(items, model):
             "comment** and its context at that moment (vendor, root cause, material status), and check whether a "
             "**Production or Market impact** was communicated **later**.\n\n"
             "A weak signal = a phrase or a context after which such an impact comes more often than usual. "
-            "These pages follow the sidebar filters and the timeframe (items first commented in it); only the "
+            "These pages follow the sidebar filters and the timeframe (items first commented in it; Last snapshot: the "
+            "items still visible on it); only the "
             "prediction tool is trained on the whole history, because it needs volume.")
     severe = items[items["Severe_later"]]
     base = len(severe) / len(items) * 100

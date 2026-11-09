@@ -419,7 +419,7 @@ with tab2:
     with ui.section_with_options("top-root-causes", "Top Root Causes"):
         # By default what the dashboard shows today; a longer timeframe merges the snapshots of the period
         top_timeframe, top_period = insights_pages.timeframe_option(
-            st, "tf_top", [insights_pages.LAST_SNAPSHOT] + insights_pages.TIMEFRAMES)
+            st, "tf_top", [insights_pages.LAST_SNAPSHOT] + [t for t in insights_pages.TIMEFRAMES if t != insights_pages.LAST_SNAPSHOT])
         if top_timeframe == insights_pages.LAST_SNAPSHOT:
             cause_rows, all_cause_rows = with_cause(current_df), with_cause(current_all)
         else:
