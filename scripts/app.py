@@ -156,7 +156,7 @@ TABLE_COLUMNS = {  # data column -> displayed name, in the default order of the 
 if "Comment_Expanded" in df.columns:  # built by data_cleaning.py: abbreviations written out
     TABLE_COLUMNS["Comment_Expanded"] = "Comment (expanded)"
 # Ready in "▥ Columns" but hidden at first: e.g. the material number alone, without the description beside it.
-# No quantity and no price (sensitive data).
+# Quantities too (sensitive: hidden at first, never sent to the language model); no price.
 df["Material_Number"] = df["MATERIAL_NUMBER"].astype("Int64").astype(str)
 df["Vendor_Account"] = df["VENDOR_ACCOUNT_NUMBER"].astype("Int64").astype(str).replace("<NA>", "")
 EXTRA_COLUMNS = {
@@ -164,7 +164,9 @@ EXTRA_COLUMNS = {
     "Stakeholder": "Stakeholder", "ITEM_DELIVERY_DATE": "Delivery date", "RESCHEDULING_DATE": "Rescheduling date",
     "ORDER_CONFIRMATION": "Order confirmed", "Delay": "Delay (days)", "MATERIAL_RISK": "Material risk",
     "SOURCING_MANAGER": "Sourcing manager", "Instruments_Affected": "Instruments affected",
-    "N_Snapshots": "Snapshots seen", "N_Entries": "Entries", "N_Authors": "Authors", "comment_language": "Language"}
+    "N_Snapshots": "Snapshots seen", "N_Entries": "Entries", "N_Authors": "Authors", "comment_language": "Language",
+    "PO_QTY": "PO quantity", "INVENTORY_QTY": "Inventory", "BLOCKED_STOCK": "Blocked stock",
+    "QUALITY_INSPECTION_STOCK": "Quality inspection stock"}
 TABLE_COLUMNS.update({k: v for k, v in EXTRA_COLUMNS.items() if k in df.columns})
 DEFAULT_COLUMNS = [c for c in TABLE_COLUMNS.values()
                    if c not in ("Original comment", "Comment (expanded)", *EXTRA_COLUMNS.values())]
